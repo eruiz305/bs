@@ -21,6 +21,45 @@ let periodEnd="",fiscalYY="",actualMM="",seqStart="01",journalTitle="Standard Am
 let defaults={fyy:"",amm:"",amemo:"{{vendor}} {{invnum}} amortization ({{start}}–{{end}})",jnltitle:"Standard Amortization Entry"};
 let mode="amort";
 
+const MASTER_FILE="master_schedule.xlsx";
+const MASTER_SHEET="Master";
+let masterWB=null;
+let latestClosedPeriod=null;
+
+async function loadMasterFile(){
+  try{
+    const resp=await fetch(MASTER_FILE);
+    if(!resp.ok) throw new Error("missing");
+    const data=new Uint8Array(await resp.arrayBuffer());
+    masterWB=XLSX.read(data,{type:"array"});
+  }catch{
+    masterWB=XLSX.utils.book_new();
+    const ws=XLSX.utils.json_to_sheet([]);
+    XLSX.utils.book_append_sheet(masterWB,ws,MASTER_SHEET);
+    saveMasterFile();
+  }
+  computeLatestClosedPeriod();
+}
+function saveMasterFile(){if(masterWB) XLSX.writeFile(masterWB,MASTER_FILE);} 
+function computeLatestClosedPeriod(){
+  latestClosedPeriod=null;
+  if(!masterWB) return;
+  const ws=masterWB.Sheets[MASTER_SHEET];
+  if(!ws) return;
+  const rows=XLSX.utils.sheet_to_json(ws);
+  rows.forEach(r=>{const d=parseDate(r.period||r.trndat||r.date);if(d&&(!latestClosedPeriod||d>latestClosedPeriod))latestClosedPeriod=d;});
+}
+function appendToMaster(rows){
+  if(!masterWB) return;
+  const ws=masterWB.Sheets[MASTER_SHEET]||XLSX.utils.json_to_sheet([]);
+  const existing=XLSX.utils.sheet_to_json(ws);
+  const all=existing.concat(rows);
+  masterWB.Sheets[MASTER_SHEET]=XLSX.utils.json_to_sheet(all);
+  rows.forEach(r=>{const d=parseDate(r.period);if(d&&(!latestClosedPeriod||d>latestClosedPeriod))latestClosedPeriod=d;});
+  saveMasterFile();
+}
+function isClosed(d){return latestClosedPeriod&&new Date(d)<=latestClosedPeriod;}
+
 function save(){localStorage.setItem(STORAGE,JSON.stringify({profile,actionsByKey,items,reclassItems,periodEnd,fiscalYY,actualMM,seqStart,journalTitle,acctSheet,acctCols,defaults}))}
 function load(){try{const s=localStorage.getItem(STORAGE);if(s){const o=JSON.parse(s);profile=o.profile||profile;actionsByKey=o.actionsByKey||{};items=o.items||[];reclassItems=o.reclassItems||[];periodEnd=o.periodEnd||"";fiscalYY=o.fiscalYY||"";actualMM=o.actualMM||"";seqStart=o.seqStart||"01";journalTitle=o.journalTitle||journalTitle;acctSheet=o.acctSheet||"";acctCols=o.acctCols||acctCols;defaults=o.defaults||defaults}}catch{}}
 
@@ -52,8 +91,24 @@ function openDetail(g){detailGroup=g;el("dlg-title").textContent=`Invoice ${g.in
 function renderSelectedTotal(){const total=groups.filter(g=>actionsByKey[g.key]?.amortize).reduce((a,b)=>a+(b.amount||0),0);setText("sel-total",fmtUSD.format(total))}
 function updateActionButtons(){const anyAm=groups.some(g=>actionsByKey[g.key]?.amortize);const anyRc=groups.some(g=>actionsByKey[g.key]?.reclass);el("add-to-amort").disabled=!anyAm;el("add-to-reclass").disabled=!anyRc}
 
-function addSelectedToAmort(){const picks=groups.filter(g=>actionsByKey[g.key]?.amortize);const newItems=picks.map(g=>({id:uid(),source:{type:"AP",vendor:g.vendor,invoiceNumber:g.invoiceNumber,amount:g.amount,invoiceDate:g.date||new Date(),description:g.rows[0]?.description||"",seg2:g.rows[0]?.seg2||"",seg3:g.rows[0]?.seg3||"",seg4:g.rows[0]?.seg4||"",lines:g.rows},amort:{enabled:true,method:"straight",months:12,startDate:g.date||new Date(),postOn:"EOM",expSeg2:"",expSeg3:"",expSeg4:"",memoTemplate:defaults.amemo},asset:{seg2:g.rows[0]?.seg2||"",seg3:g.rows[0]?.seg3||"",seg4:g.rows[0]?.seg4||""},schedule:[]}));items=items.concat(newItems);save();renderItems()}
-function addSelectedToReclass(){const picks=groups.filter(g=>actionsByKey[g.key]?.reclass);const newItems=picks.map(g=>({id:uid(),vendor:g.vendor,invoiceNumber:g.invoiceNumber,amount:g.amount,fromSeg2:g.rows[0]?.seg2||"",fromSeg3:g.rows[0]?.seg3||"",fromSeg4:g.rows[0]?.seg4||"",toSeg2:"",toSeg3:"",toSeg4:"",memo:`Reclass ${g.vendor||""} ${g.invoiceNumber||""}`}));reclassItems=reclassItems.concat(newItems);save();renderReclass()}
+function addSelectedToAmort(){
+  const picks=groups.filter(g=>actionsByKey[g.key]?.amortize);
+  const newItems=picks.map(g=>{
+    const start=g.date||new Date();
+    if(isClosed(start)){alert("Item in closed period");return null;}
+    return {id:uid(),source:{type:"AP",vendor:g.vendor,invoiceNumber:g.invoiceNumber,amount:g.amount,invoiceDate:g.date||new Date(),description:g.rows[0]?.description||"",seg2:g.rows[0]?.seg2||"",seg3:g.rows[0]?.seg3||"",seg4:g.rows[0]?.seg4||"",lines:g.rows},amort:{enabled:true,method:"straight",months:12,startDate:g.date||new Date(),postOn:"EOM",expSeg2:"",expSeg3:"",expSeg4:"",memoTemplate:defaults.amemo},asset:{seg2:g.rows[0]?.seg2||"",seg3:g.rows[0]?.seg3||"",seg4:g.rows[0]?.seg4||""},schedule:[]};
+  }).filter(Boolean);
+  items=items.concat(newItems);
+  save();renderItems();
+}
+function addSelectedToReclass(){
+  const picks=groups.filter(g=>actionsByKey[g.key]?.reclass);
+  const ref=periodEnd?new Date(periodEnd):new Date();
+  if(isClosed(ref)){alert("Period is closed");return;}
+  const newItems=picks.map(g=>({id:uid(),vendor:g.vendor,invoiceNumber:g.invoiceNumber,amount:g.amount,fromSeg2:g.rows[0]?.seg2||"",fromSeg3:g.rows[0]?.seg3||"",fromSeg4:g.rows[0]?.seg4||"",toSeg2:"",toSeg3:"",toSeg4:"",memo:`Reclass ${g.vendor||""} ${g.invoiceNumber||""}`}));
+  reclassItems=reclassItems.concat(newItems);
+  save();renderReclass();
+}
 
 function buildSchedule(it){const src=it.source,a=it.amort;if(!a.enabled||!a.months)return[];const base=Number(src.amount)||0;const sDate=a.startDate?new Date(a.startDate):new Date();const first=a.postOn==="EOM"?eom(sDate):sDate;const exp=(a.expSeg2||"")+"-"+(a.expSeg3||"")+"-"+(a.expSeg4||"");const ast=(it.asset.seg2||src.seg2||"")+"-"+(it.asset.seg3||src.seg3||"")+"-"+(it.asset.seg4||src.seg4||"");const rows=[];const memo=(st,en)=> (a.memoTemplate||defaults.amemo).replace("{{vendor}}",src.vendor||"").replace("{{invnum}}",src.invoiceNumber||"").replace("{{start}}",toISO(st)).replace("{{end}}",toISO(en));if(a.method==="straight"){const per=round2(base/a.months);let acc=0;for(let i=0;i<a.months;i++){const d=a.postOn==="EOM"?eom(addMonths(first,i)):addMonths(first,i);const amt=i===a.months-1?round2(base-acc):per;acc=round2(acc+amt);rows.push({date:d,amount:amt,debitCombo:exp,creditCombo:ast,memo:memo(first,a.postOn==="EOM"?eom(addMonths(first,a.months-1)):addMonths(first,a.months-1))})}}else{const dim=new Date(first.getFullYear(),first.getMonth()+1,0).getDate();const firstDays=dim-first.getDate()+1;const daily=base/(firstDays+(a.months-1)*30);let acc=0;for(let i=0;i<a.months;i++){const d=a.postOn==="EOM"?eom(addMonths(first,i)):addMonths(first,i);const days=i===0?firstDays:30;const amt=i===a.months-1?round2(base-acc):round2(daily*days);acc=round2(acc+amt);rows.push({date:d,amount:amt,debitCombo:exp,creditCombo:ast,memo:memo(first,a.postOn==="EOM"?eom(addMonths(first,a.months-1)):addMonths(first,a.months-1))})}}return rows}
 
@@ -75,7 +130,7 @@ function renderItems(){
     const grid=document.createElement("div");grid.className="grid3";
 
     const months=document.createElement("div");months.innerHTML=`<label>Months</label>`;const monthsIn=document.createElement("input");monthsIn.type="number";monthsIn.min=1;monthsIn.value=it.amort.months;monthsIn.oninput=()=>{it.amort.months=Number(monthsIn.value||0);save()};months.appendChild(monthsIn);grid.appendChild(months);
-    const start=document.createElement("div");start.innerHTML=`<label>Start Date</label>`;const startIn=document.createElement("input");startIn.type="date";startIn.value=toISO(it.amort.startDate);startIn.oninput=()=>{it.amort.startDate=new Date(startIn.value);save()};start.appendChild(startIn);grid.appendChild(start);
+    const start=document.createElement("div");start.innerHTML=`<label>Start Date</label>`;const startIn=document.createElement("input");startIn.type="date";startIn.value=toISO(it.amort.startDate);startIn.oninput=()=>{const d=new Date(startIn.value);if(isClosed(d)){alert("Date in closed period");startIn.value=toISO(it.amort.startDate);return;}it.amort.startDate=d;save()};start.appendChild(startIn);grid.appendChild(start);
     const post=document.createElement("div");post.innerHTML=`<label>Post On</label>`;const postSel=document.createElement("select");postSel.innerHTML=`<option value="EOM">End of Month</option><option value="SameDay">Same Day</option>`;postSel.value=it.amort.postOn;postSel.onchange=()=>{it.amort.postOn=postSel.value;save()};post.appendChild(postSel);grid.appendChild(post);
     const method=document.createElement("div");method.innerHTML=`<label>Method</label>`;const methodSel=document.createElement("select");methodSel.innerHTML=`<option value="straight">Straight-line</option><option value="prorata">Prorata</option>`;methodSel.value=it.amort.method;methodSel.onchange=()=>{it.amort.method=methodSel.value;save()};method.appendChild(methodSel);grid.appendChild(method);
 
@@ -141,8 +196,10 @@ function renderTBCheck(){setText("ap-total",fmtUSD.format(apModuleTotal()));cons
 function exportTXT(){
   const trndat=toISO(eom(periodEnd?new Date(periodEnd):new Date()));
   const ref=periodEnd?new Date(periodEnd):new Date();
+  if(isClosed(ref)){alert("Period is closed");return;}
   let seq=Number(seqStart||1);
   const out=[["Trndat","Jnlsrc","Jnlidn","Jnldsc","Modsrc","Co_num","SegnumT","SegnumT","SegnumF","SegnumF","DebAmt","CrdAmt","lngdsc"]];
+  const masterRows=[];
   const baseCols={jnlsrc:"GL",modsrc:"GL",co_num:"01",segBlank:""};
   const fy=(fiscalYY||defaults.fyy||"00").slice(-2);
   const mm=(actualMM||defaults.amm||"00").slice(-2);
@@ -154,6 +211,7 @@ function exportTXT(){
     const memo=it.memo||`Reclass ${it.vendor||""} ${it.invoiceNumber||""}`;
     out.push([...base,it.toSeg2||"",it.toSeg3||"",it.toSeg4||"",baseCols.segBlank,round2(it.amount),0,memo]);
     out.push([...base,it.fromSeg2||"",it.fromSeg3||"",it.fromSeg4||"",baseCols.segBlank,0,round2(it.amount),memo]);
+    masterRows.push({type:"reclass",period:trndat,je,amount:round2(it.amount),debit:`${it.toSeg2||""}-${it.toSeg3||""}-${it.toSeg4||""}`,credit:`${it.fromSeg2||""}-${it.fromSeg3||""}-${it.fromSeg4||""}`,memo,user:profile.email||"",timestamp:new Date().toISOString(),vendor:it.vendor,invoiceNumber:it.invoiceNumber});
   });
 
   const month=ref.getMonth(),year=ref.getFullYear();
@@ -163,8 +221,10 @@ function exportTXT(){
     lines.forEach(r=>{
       out.push([...base,it.amort.expSeg2||"",it.amort.expSeg3||"",it.amort.expSeg4||"",baseCols.segBlank,round2(r.amount),0,r.memo]);
       out.push([...base,it.asset.seg2||it.source.seg2||"",it.asset.seg3||it.source.seg3||"",it.asset.seg4||it.source.seg4||"",baseCols.segBlank,0,round2(r.amount),r.memo]);
+      masterRows.push({type:"amort",period:trndat,je,amount:round2(r.amount),debit:`${it.amort.expSeg2||""}-${it.amort.expSeg3||""}-${it.amort.expSeg4||""}`,credit:`${it.asset.seg2||it.source.seg2||""}-${it.asset.seg3||it.source.seg3||""}-${it.asset.seg4||it.source.seg4||""}`,memo:r.memo,user:profile.email||"",timestamp:new Date().toISOString(),vendor:it.source.vendor,invoiceNumber:it.source.invoiceNumber});
     });
   });
+  if(masterRows.length) appendToMaster(masterRows);
   downloadTXT("AFS_Amort_"+trndat+".txt",out);
 }
 
@@ -318,6 +378,7 @@ el("set-save").onclick=()=>{
 el("edit-user").onclick=openProfile;el("force-login").onclick=openProfile;el("u-save").onclick=()=>{applyProfile();el("login").style.display="none"};
 
 load();renderProfile();setMode("amort");
+loadMasterFile();
 if(defaults.fyy&&!fiscalYY)fiscalYY=defaults.fyy;
 if(defaults.amm&&!actualMM)actualMM=defaults.amm;
 if(defaults.jnltitle&&!journalTitle)journalTitle=defaults.jnltitle;
