@@ -467,8 +467,6 @@ el("set-save").onclick=()=>{
   buildGroupFilter();buildActivitySelect();
 };
 el("grp-add").onclick=()=>{defaults.groups.push({group:"",seg2:"",seg3:"",seg4:""});renderGroupTable()};
-=======
-
 
 el("edit-user").onclick=openProfile;el("force-login").onclick=openProfile;el("u-save").onclick=()=>{applyProfile();el("login").style.display="none"};
 
