@@ -17,22 +17,14 @@ let wbSheets={},wbNames=[];
 let apRows=[],apCols=[],mapCols={},groups=[],detailGroup=null,summaryTB=[],detailTB=[];
 let acctSheet="",acctCols={seg2:"",seg3:"",seg4:"",desc:"",active:""},acctMap=new Map(),acctList=[];
 let actionsByKey={},items=[],reclassItems=[];
+
 let periodEnd="",fiscalYY="",actualMM="",seqStart="01",journalTitle="Standard Amortization Entry";
-let defaults={fyy:"",amm:"",amemo:"{{vendor}} {{invnum}} amortization ({{start}}–{{end}})",jnltitle:"Standard Amortization Entry"};
-let periods=[],closingPeriod="2025-10";
+let defaults={fyy:"",amm:"",amemo:"{{vendor}} {{invnum}} amortization ({{start}}–{{end}})",jnltitle:"Standard Amortization Entry",groups:[]};
 let mode="amort";
 
-function save(){localStorage.setItem(STORAGE,JSON.stringify({profile,actionsByKey,items,reclassItems,periodEnd,fiscalYY,actualMM,seqStart,journalTitle,acctSheet,acctCols,defaults,periods,closingPeriod}))}
-function load(){try{const s=localStorage.getItem(STORAGE);if(s){const o=JSON.parse(s);profile=o.profile||profile;actionsByKey=o.actionsByKey||{};items=o.items||[];reclassItems=o.reclassItems||[];periodEnd=o.periodEnd||"";fiscalYY=o.fiscalYY||"";actualMM=o.actualMM||"";seqStart=o.seqStart||"01";journalTitle=o.journalTitle||journalTitle;acctSheet=o.acctSheet||"";acctCols=o.acctCols||acctCols;defaults=o.defaults||defaults;periods=o.periods||[];closingPeriod=o.closingPeriod||closingPeriod}}catch{}}
+function save(){localStorage.setItem(STORAGE,JSON.stringify({profile,actionsByKey,items,reclassItems,periodEnd,fiscalYY,actualMM,seqStart,journalTitle,acctSheet,acctCols,defaults}))}
+function load(){try{const s=localStorage.getItem(STORAGE);if(s){const o=JSON.parse(s);profile=o.profile||profile;actionsByKey=o.actionsByKey||{};items=o.items||[];reclassItems=o.reclassItems||[];periodEnd=o.periodEnd||"";fiscalYY=o.fiscalYY||"";actualMM=o.actualMM||"";seqStart=o.seqStart||"01";journalTitle=o.journalTitle||journalTitle;acctSheet=o.acctSheet||"";acctCols=o.acctCols||acctCols;defaults=o.defaults||defaults;if(!defaults.groups)defaults.groups=[]}}catch{}}
 
-const closingPeriodEnd=()=>{
-  if(!closingPeriod) return "";
-  const parts=closingPeriod.split("-");
-  if(parts.length<2) return "";
-  const y=Number(parts[0]),m=Number(parts[1]);
-  if(!y||!m) return "";
-  return toISO(new Date(y,m,0));
-};
 
 function renderProfile(){const name=profile.first&&profile.last?`${profile.first} ${profile.last}`:"Not set";setText("user-line",`${name} · ${profile.email||""}`);setText("user-badge",name?`${name}`:"Not signed in");el("login").style.display=(profile.email? "none":"flex")}
 function openProfile(){el("u-first").value=profile.first||"";el("u-last").value=profile.last||"";el("u-email").value=profile.email||"";el("login").style.display="flex"}
@@ -264,25 +256,35 @@ function loadWorkbook(file){
   reader.readAsArrayBuffer(file);
 }
 
-function buildActivitySelect(){const sel=el("act-select");sel.innerHTML="";acctList.slice(0,4000).forEach(a=>{const o=document.createElement("option");o.value=a.key;o.textContent=`${a.key} — ${a.desc}`;sel.appendChild(o)})}
+function groupCombos(name){return (defaults.groups||[]).filter(g=>g.group===name).map(g=>`${g.seg2}-${g.seg3}-${g.seg4}`)}
+function otherCombos(){const defined=new Set((defaults.groups||[]).map(g=>`${g.seg2}-${g.seg3}-${g.seg4}`));return acctList.map(a=>a.key).filter(k=>!defined.has(k))}
+function buildGroupFilter(){const sel=el("act-group");if(!sel)return;sel.innerHTML="";const opt=document.createElement("option");opt.value="";opt.textContent="(none)";sel.appendChild(opt);const names=[...new Set((defaults.groups||[]).map(g=>g.group).filter(Boolean))];names.forEach(n=>{const o=document.createElement("option");o.value=n;o.textContent=n;sel.appendChild(o)});const o=document.createElement("option");o.value="__other";o.textContent="Other";sel.appendChild(o)}
+function buildActivitySelect(){const sel=el("act-select");sel.innerHTML="";let list=acctList.slice(0,4000);const g=el("act-group")?el("act-group").value:"";if(g){const combos=g==="__other"?otherCombos():groupCombos(g);list=list.filter(a=>combos.includes(a.key))}list.forEach(a=>{const o=document.createElement("option");o.value=a.key;o.textContent=`${a.key} — ${a.desc}`;sel.appendChild(o)})}
 
 function renderActivity(){
   const ref=el("act-period").value||toISO(new Date());
+  const group=el("act-group")?el("act-group").value:"";
   const combo=(el("act-search").value||el("act-select").value||"").trim();
   const sum=el("act-summary");const host=el("act-table");sum.innerHTML="";host.innerHTML="";
-  if(!combo){sum.innerHTML='<span class="small">Enter or select an account combo.</span>';return}
-  const calc=actCalcForCombo(combo,ref);const tb=actTBForCombo(combo,ref);const months=calc.months;
+  let combos=[],label="",desc="";
+  if(combo){combos=[combo];label=combo;desc=acctLookup(...combo.split("-"));}
+  else if(group==="__other"){combos=otherCombos();label="Other";}
+  else if(group){combos=groupCombos(group);label=group;}
+  if(!combos.length){sum.innerHTML='<span class="small">Enter or select an account combo.</span>';return}
+  const calc=actCalcForCombo(combos,ref);const tb=actTBForCombo(combos,ref);const months=calc.months;
   const hdr=`<tr><th>Row</th>${months.map(m=>`<th class="num">${m.toLocaleString(undefined,{month:"short"})} Dr</th><th class="num">${m.toLocaleString(undefined,{month:"short"})} Cr</th>`).join("")}<th class="num">Total Dr</th><th class="num">Total Cr</th></tr>`;
   const rowFrom=(label,mp)=>`<tr><td>${label}</td>${months.map(m=>{const k=monthKey(m);const v=mp[k]||{dr:0,cr:0};return `<td class="num">${fmtUSD.format(v.dr)}</td><td class="num">${fmtUSD.format(v.cr)}</td>`}).join("")}<td class="num">${fmtUSD.format(months.reduce((a,m)=>a+(mp[monthKey(m)]?.dr||0),0))}</td><td class="num">${fmtUSD.format(months.reduce((a,m)=>a+(mp[monthKey(m)]?.cr||0),0))}</td></tr>`;
   const t=document.createElement("table");t.innerHTML=`<thead>${hdr}</thead><tbody>${rowFrom("Calculated",calc.map)}${tb?rowFrom("TB",tb.map):""}</tbody>`;host.appendChild(t);
-  const desc=acctLookup(...combo.split("-"));sum.innerHTML=`<div class="row"><span class="pill">${combo}</span><span class="small">${desc||""}</span></div>`;
+  sum.innerHTML=`<div class="row"><span class="pill">${label}</span><span class="small">${desc||""}</span></div>`;
 }
 function actMonths(ref){const arr=[];const base=ref?new Date(ref):new Date();for(let i=0;i<12;i++){const d=new Date(base.getFullYear(),base.getMonth()-11+i,1);arr.push(new Date(d.getFullYear(),d.getMonth(),1))}return arr}
 function monthKey(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")}
-function actCalcForCombo(combo,refDate){const months=actMonths(refDate);const map=Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}]));items.forEach(it=>{(it.schedule||[]).forEach(r=>{const d=new Date(r.date);const k=monthKey(new Date(d.getFullYear(),d.getMonth(),1));if(!map[k])return;if(r.debitCombo===combo) map[k].dr+=Number(r.amount)||0;if(r.creditCombo===combo) map[k].cr+=Number(r.amount)||0})});reclassItems.forEach(j=>{const k=monthKey(new Date(refDate||new Date()));if(j.toSeg2+"-"+j.toSeg3+"-"+j.toSeg4===combo) map[k].dr+=Number(j.amount)||0;if(j.fromSeg2+"-"+j.fromSeg3+"-"+j.fromSeg4===combo) map[k].cr+=Number(j.amount)||0});return {months,map}}
-function actTBForCombo(combo,refDate){if(!detailTB.length)return null;const seg2k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg2")||k.toLowerCase().includes("segnumtwo"));const seg3k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg3")||k.toLowerCase().includes("segnumthr"));const seg4k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg4")||k.toLowerCase().includes("segnumfou"));const datek=Object.keys(detailTB[0]).find(k=>/date|trndat|trandat|posting/i.test(k));const debitk=Object.keys(detailTB[0]).find(k=>/debit|debitamt|debamt/i.test(k));const creditk=Object.keys(detailTB[0]).find(k=>/credit|crdamt|cramt/i.test(k));if(!seg2k||!seg3k||!seg4k||!datek||!(debitk||creditk))return null;const months=actMonths(refDate);const map=Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}]));detailTB.forEach(r=>{const k=[r[seg2k],r[seg3k],r[seg4k]].map(x=>String(x||"")).join("-");if(k!==combo)return;const d=parseDate(r[datek]);if(!d)return;const mk=monthKey(new Date(d.getFullYear(),d.getMonth(),1));if(!map[mk])return;const dr=Number((debitk&&r[debitk])||0)||0;const cr=Number((creditk&&r[creditk])||0)||0;map[mk].dr+=dr;map[mk].cr+=cr});return {months,map}}
+function actCalcForCombo(combo,refDate){const combos=Array.isArray(combo)?combo:[combo];const set=new Set(combos);const months=actMonths(refDate);const map=Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}]));items.forEach(it=>{(it.schedule||[]).forEach(r=>{const d=new Date(r.date);const k=monthKey(new Date(d.getFullYear(),d.getMonth(),1));if(!map[k])return;if(set.has(r.debitCombo)) map[k].dr+=Number(r.amount)||0;if(set.has(r.creditCombo)) map[k].cr+=Number(r.amount)||0})});reclassItems.forEach(j=>{const k=monthKey(new Date(refDate||new Date()));if(set.has(j.toSeg2+"-"+j.toSeg3+"-"+j.toSeg4)) map[k].dr+=Number(j.amount)||0;if(set.has(j.fromSeg2+"-"+j.fromSeg3+"-"+j.fromSeg4)) map[k].cr+=Number(j.amount)||0});return {months,map}}
+function actTBForCombo(combo,refDate){if(!detailTB.length)return null;const seg2k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg2")||k.toLowerCase().includes("segnumtwo"));const seg3k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg3")||k.toLowerCase().includes("segnumthr"));const seg4k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg4")||k.toLowerCase().includes("segnumfou"));const datek=Object.keys(detailTB[0]).find(k=>/date|trndat|trandat|posting/i.test(k));const debitk=Object.keys(detailTB[0]).find(k=>/debit|debitamt|debamt/i.test(k));const creditk=Object.keys(detailTB[0]).find(k=>/credit|crdamt|cramt/i.test(k));if(!seg2k||!seg3k||!seg4k||!datek||!(debitk||creditk))return null;const combos=Array.isArray(combo)?combo:[combo];const set=new Set(combos);const months=actMonths(refDate);const map=Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}]));detailTB.forEach(r=>{const k=[r[seg2k],r[seg3k],r[seg4k]].map(x=>String(x||"")).join("-");if(!set.has(k))return;const d=parseDate(r[datek]);if(!d)return;const mk=monthKey(new Date(d.getFullYear(),d.getMonth(),1));if(!map[mk])return;const dr=Number((debitk&&r[debitk])||0)||0;const cr=Number((creditk&&r[creditk])||0)||0;map[mk].dr+=dr;map[mk].cr+=cr});return {months,map}}
 
-function buildActivityDefaults(){el("act-period").value=periodEnd||closingPeriodEnd()||toISO(new Date());buildActivitySelect();renderActivity()}
+
+function buildActivityDefaults(){el("act-period").value=periodEnd||toISO(new Date());buildGroupFilter();buildActivitySelect();renderActivity()}
+
 
 function handleImportSchedule(f){const r=new FileReader();r.onload=e=>{const rows=String(e.target.result).split(/\r?\n/).map(l=>l.split(/,|\t/));const hdr=rows.shift().map(x=>x.trim().toLowerCase());const idx=(n)=>hdr.indexOf(n);rows.forEach(c=>{if(!c.length)return;const o={date:c[idx("date")],amount:Number(c[idx("amount")]||0),debitCombo:`${c[idx("debitseg2")]||""}-${c[idx("debitseg3")]||""}-${c[idx("debitseg4")]||""}`,creditCombo:`${c[idx("creditseg2")]||""}-${c[idx("creditseg3")]||""}-${c[idx("creditseg4")]||""}`,memo:c[idx("memo")]||""};items.push({id:uid(),source:{type:"Import",vendor:"Imported",invoiceNumber:"",amount:o.amount,invoiceDate:parseDate(o.date)||new Date(),description:o.memo,seg2:o.creditCombo.split("-")[0],seg3:o.creditCombo.split("-")[1],seg4:o.creditCombo.split("-")[2],lines:[]},amort:{enabled:false,method:"straight",months:1,startDate:parseDate(o.date)||new Date(),postOn:"EOM",expSeg2:o.debitCombo.split("-")[0],expSeg3:o.debitCombo.split("-")[1],expSeg4:o.debitCombo.split("-")[2],memoTemplate:o.memo},asset:{seg2:o.creditCombo.split("-")[0],seg3:o.creditCombo.split("-")[1],seg4:o.creditCombo.split("-")[2]},schedule:[{date:parseDate(o.date)||new Date(),amount:o.amount,debitCombo:o.debitCombo,creditCombo:o.creditCombo,memo:o.memo}]})});save();renderItems();renderActivity()};r.readAsText(f)}
 function handleImportJE(f){const r=new FileReader();r.onload=e=>{const rows=String(e.target.result).split(/\r?\n/).map(l=>l.split(/\t|,/));const hdr=rows.shift().map(x=>x.trim().toLowerCase());const g=(n)=>hdr.indexOf(n);rows.forEach(c=>{if(c.length<13)return;const deb=Number(c[g("debamt")]||0)||0;const crd=Number(c[g("crdamt")]||0)||0;const s2=c[g("segnumt")]||c[g("segnumt")];const s3=c[g("segnumt")]||c[g("segnumt")];const s4=c[g("segnumf")]||c[g("segnumf")];const memo=c[g("lngdsc")]||"";if(deb>0){reclassItems.push({id:uid(),vendor:"Imported JE",invoiceNumber:"",amount:deb,fromSeg2:"",fromSeg3:"",fromSeg4:"",toSeg2:s2,toSeg3:s3,toSeg4:s4,memo})}if(crd>0){reclassItems.push({id:uid(),vendor:"Imported JE",invoiceNumber:"",amount:crd,fromSeg2:s2,fromSeg3:s3,fromSeg4:s4,toSeg2:"",toSeg3:"",toSeg4:"",memo})}});save();renderReclass();renderActivity()};r.readAsText(f)}
@@ -302,18 +304,16 @@ el("acct-sheet").addEventListener("change",e=>{acctSheet=e.target.value;const co
 ["acct-seg2","acct-seg3","acct-seg4","acct-desc","acct-active"].forEach((id,i)=>el(id).addEventListener("change",e=>{acctCols[["seg2","seg3","seg4","desc","active"][i]]=e.target.value;save()}));
 el("acct-build").addEventListener("click",()=>{buildAcctIndex();save()});
 
+
 el("tab-amort").onclick=()=>setMode("amort");
 el("tab-activity").onclick=()=>{setMode("activity");buildActivityDefaults()};
-el("tab-recon").onclick=()=>{setMode("recon");el("recon-period").value=closingPeriod||"";renderReconciliation()};
 el("tab-settings").onclick=()=>{setMode("settings");renderSettings()};
 el("act-refresh").onclick=renderActivity;
 el("act-select").addEventListener("change",()=>{el("act-search").value=el("act-select").value;renderActivity()});
+el("act-group").addEventListener("change",()=>{buildActivitySelect();renderActivity()});
 el("act-search").addEventListener("input",renderActivity);
 el("act-period").addEventListener("input",renderActivity);
 
-el("recon-period").addEventListener("input",renderReconciliation);
-el("set-closing").addEventListener("input",e=>{closingPeriod=e.target.value;periodEnd=closingPeriodEnd();if(periodEnd){el("periodEnd").value=periodEnd;el("act-period").value=periodEnd;}el("recon-period").value=closingPeriod;save();});
-el("add-period").onclick=()=>{periods.push({period:"",begin:"",end:""});renderPeriods();save()};
 
 el("imp-sched").addEventListener("change",e=>{const f=e.target.files?.[0];if(f)handleImportSchedule(f)});
 el("imp-je").addEventListener("change",e=>{const f=e.target.files?.[0];if(f)handleImportJE(f)});
@@ -331,14 +331,38 @@ el("dl-je").addEventListener("click",()=>downloadBlob(
   "2025-07-31\tGL\t250701\tSample JE\tGL\t01\t11415\t000\t02\t\t0\t1000\tSample credit line\n"
 ));
 
+
 /* Settings */
+function renderGroupTable(){
+  const tbody=el("grp-rows");
+  tbody.innerHTML="";
+  (defaults.groups||[]).forEach((g,i)=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td><input data-idx="${i}" data-k="group" type="text" value="${g.group||""}"></td>`+
+    `<td><input data-idx="${i}" data-k="seg2" type="text" value="${g.seg2||""}"></td>`+
+    `<td><input data-idx="${i}" data-k="seg3" type="text" value="${g.seg3||""}"></td>`+
+    `<td><input data-idx="${i}" data-k="seg4" type="text" value="${g.seg4||""}"></td>`+
+    `<td><button data-idx="${i}" class="grp-del">✖</button></td>`;
+    tbody.appendChild(tr);
+  });
+  tbody.querySelectorAll("input").forEach(inp=>{
+    inp.addEventListener("input",e=>{
+      const {idx,k}=e.target.dataset;defaults.groups[idx][k]=e.target.value.trim();
+    });
+  });
+  tbody.querySelectorAll(".grp-del").forEach(btn=>{
+    btn.addEventListener("click",e=>{const {idx}=e.target.dataset;defaults.groups.splice(idx,1);renderGroupTable()});
+  });
+}
+
+
 function renderSettings(){
   el("set-fyy").value=defaults.fyy||fiscalYY||"";
   el("set-amm").value=defaults.amm||actualMM||"";
   el("set-amemo").value=defaults.amemo||"";
   el("set-jnltitle").value=defaults.jnltitle||journalTitle||"";
-  el("set-closing").value=closingPeriod||"";
-  renderPeriods();
+
+  renderGroupTable();
 }
 el("set-save").onclick=()=>{
   defaults.fyy=el("set-fyy").value.replace(/[^0-9]/g,"").slice(-2);
@@ -348,7 +372,11 @@ el("set-save").onclick=()=>{
   if(!fiscalYY)fiscalYY=defaults.fyy; if(!actualMM)actualMM=defaults.amm; if(!journalTitle)journalTitle=defaults.jnltitle;
   el("fiscalYY").value=fiscalYY; el("actualMM").value=actualMM; el("jnlTitle").value=journalTitle;
   save();
+  buildGroupFilter();buildActivitySelect();
 };
+el("grp-add").onclick=()=>{defaults.groups.push({group:"",seg2:"",seg3:"",seg4:""});renderGroupTable()};
+=======
+
 
 el("edit-user").onclick=openProfile;el("force-login").onclick=openProfile;el("u-save").onclick=()=>{applyProfile();el("login").style.display="none"};
 
