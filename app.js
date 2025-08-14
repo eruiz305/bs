@@ -18,8 +18,9 @@ let apRows=[],apCols=[],mapCols={},groups=[],detailGroup=null,summaryTB=[],detai
 let acctSheet="",acctCols={seg2:"",seg3:"",seg4:"",desc:"",active:""},acctMap=new Map(),acctList=[];
 let actionsByKey={},items=[],reclassItems=[];
 let periodEnd="",fiscalYY="",actualMM="",seqStart="01",journalTitle="Standard Amortization Entry";
-let defaults={fyy:"",amm:"",amemo:"{{vendor}} {{invnum}} amortization ({{start}}–{{end}})",jnltitle:"Standard Amortization Entry"};
-let mode="amort";
+  let defaults={fyy:"",amm:"",amemo:"{{vendor}} {{invnum}} amortization ({{start}}–{{end}})",jnltitle:"Standard Amortization Entry"};
+  let mode="amort";
+  let activitySection="schedule";
 
 function save(){localStorage.setItem(STORAGE,JSON.stringify({profile,actionsByKey,items,reclassItems,periodEnd,fiscalYY,actualMM,seqStart,journalTitle,acctSheet,acctCols,defaults}))}
 function load(){try{const s=localStorage.getItem(STORAGE);if(s){const o=JSON.parse(s);profile=o.profile||profile;actionsByKey=o.actionsByKey||{};items=o.items||[];reclassItems=o.reclassItems||[];periodEnd=o.periodEnd||"";fiscalYY=o.fiscalYY||"";actualMM=o.actualMM||"";seqStart=o.seqStart||"01";journalTitle=o.journalTitle||journalTitle;acctSheet=o.acctSheet||"";acctCols=o.acctCols||acctCols;defaults=o.defaults||defaults}}catch{}}
@@ -238,7 +239,7 @@ function loadWorkbook(file){
 
 function buildActivitySelect(){const sel=el("act-select");sel.innerHTML="";acctList.slice(0,4000).forEach(a=>{const o=document.createElement("option");o.value=a.key;o.textContent=`${a.key} — ${a.desc}`;sel.appendChild(o)})}
 
-function renderActivity(){
+function renderActivitySchedule(){
   const ref=el("act-period").value||toISO(new Date());
   const combo=(el("act-search").value||el("act-select").value||"").trim();
   const sum=el("act-summary");const host=el("act-table");sum.innerHTML="";host.innerHTML="";
@@ -249,12 +250,29 @@ function renderActivity(){
   const t=document.createElement("table");t.innerHTML=`<thead>${hdr}</thead><tbody>${rowFrom("Calculated",calc.map)}${tb?rowFrom("TB",tb.map):""}</tbody>`;host.appendChild(t);
   const desc=acctLookup(...combo.split("-"));sum.innerHTML=`<div class="row"><span class="pill">${combo}</span><span class="small">${desc||""}</span></div>`;
 }
+
+function renderActivityOther(){
+  const ref=el("act-period").value||toISO(new Date());
+  const combo=(el("act-search").value||el("act-select").value||"").trim();
+  const host=el("act-other");host.innerHTML="";
+  if(!combo){host.innerHTML='<span class="small">Enter or select an account combo.</span>';return}
+  host.innerHTML=`<div class="row"><span class="pill">${combo}</span><span class="small">Ref ${ref}</span></div>`;
+}
+
+function renderActivity(){
+  renderActivitySchedule();
+  renderActivityOther();
+  el("act-sched-card").style.display=activitySection==="schedule"?"block":"none";
+  el("act-other-card").style.display=activitySection==="other"?"block":"none";
+  el("act-tab-sched").classList.toggle("active",activitySection==="schedule");
+  el("act-tab-other").classList.toggle("active",activitySection==="other");
+}
 function actMonths(ref){const arr=[];const base=ref?new Date(ref):new Date();for(let i=0;i<12;i++){const d=new Date(base.getFullYear(),base.getMonth()-11+i,1);arr.push(new Date(d.getFullYear(),d.getMonth(),1))}return arr}
 function monthKey(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")}
 function actCalcForCombo(combo,refDate){const months=actMonths(refDate);const map=Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}]));items.forEach(it=>{(it.schedule||[]).forEach(r=>{const d=new Date(r.date);const k=monthKey(new Date(d.getFullYear(),d.getMonth(),1));if(!map[k])return;if(r.debitCombo===combo) map[k].dr+=Number(r.amount)||0;if(r.creditCombo===combo) map[k].cr+=Number(r.amount)||0})});reclassItems.forEach(j=>{const k=monthKey(new Date(refDate||new Date()));if(j.toSeg2+"-"+j.toSeg3+"-"+j.toSeg4===combo) map[k].dr+=Number(j.amount)||0;if(j.fromSeg2+"-"+j.fromSeg3+"-"+j.fromSeg4===combo) map[k].cr+=Number(j.amount)||0});return {months,map}}
 function actTBForCombo(combo,refDate){if(!detailTB.length)return null;const seg2k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg2")||k.toLowerCase().includes("segnumtwo"));const seg3k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg3")||k.toLowerCase().includes("segnumthr"));const seg4k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg4")||k.toLowerCase().includes("segnumfou"));const datek=Object.keys(detailTB[0]).find(k=>/date|trndat|trandat|posting/i.test(k));const debitk=Object.keys(detailTB[0]).find(k=>/debit|debitamt|debamt/i.test(k));const creditk=Object.keys(detailTB[0]).find(k=>/credit|crdamt|cramt/i.test(k));if(!seg2k||!seg3k||!seg4k||!datek||!(debitk||creditk))return null;const months=actMonths(refDate);const map=Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}]));detailTB.forEach(r=>{const k=[r[seg2k],r[seg3k],r[seg4k]].map(x=>String(x||"")).join("-");if(k!==combo)return;const d=parseDate(r[datek]);if(!d)return;const mk=monthKey(new Date(d.getFullYear(),d.getMonth(),1));if(!map[mk])return;const dr=Number((debitk&&r[debitk])||0)||0;const cr=Number((creditk&&r[creditk])||0)||0;map[mk].dr+=dr;map[mk].cr+=cr});return {months,map}}
 
-function buildActivityDefaults(){el("act-period").value=periodEnd||toISO(new Date());buildActivitySelect();renderActivity()}
+  function buildActivityDefaults(){activitySection="schedule";el("act-period").value=periodEnd||toISO(new Date());buildActivitySelect();renderActivity()}
 
 function handleImportSchedule(f){const r=new FileReader();r.onload=e=>{const rows=String(e.target.result).split(/\r?\n/).map(l=>l.split(/,|\t/));const hdr=rows.shift().map(x=>x.trim().toLowerCase());const idx=(n)=>hdr.indexOf(n);rows.forEach(c=>{if(!c.length)return;const o={date:c[idx("date")],amount:Number(c[idx("amount")]||0),debitCombo:`${c[idx("debitseg2")]||""}-${c[idx("debitseg3")]||""}-${c[idx("debitseg4")]||""}`,creditCombo:`${c[idx("creditseg2")]||""}-${c[idx("creditseg3")]||""}-${c[idx("creditseg4")]||""}`,memo:c[idx("memo")]||""};items.push({id:uid(),source:{type:"Import",vendor:"Imported",invoiceNumber:"",amount:o.amount,invoiceDate:parseDate(o.date)||new Date(),description:o.memo,seg2:o.creditCombo.split("-")[0],seg3:o.creditCombo.split("-")[1],seg4:o.creditCombo.split("-")[2],lines:[]},amort:{enabled:false,method:"straight",months:1,startDate:parseDate(o.date)||new Date(),postOn:"EOM",expSeg2:o.debitCombo.split("-")[0],expSeg3:o.debitCombo.split("-")[1],expSeg4:o.debitCombo.split("-")[2],memoTemplate:o.memo},asset:{seg2:o.creditCombo.split("-")[0],seg3:o.creditCombo.split("-")[1],seg4:o.creditCombo.split("-")[2]},schedule:[{date:parseDate(o.date)||new Date(),amount:o.amount,debitCombo:o.debitCombo,creditCombo:o.creditCombo,memo:o.memo}]})});save();renderItems();renderActivity()};r.readAsText(f)}
 function handleImportJE(f){const r=new FileReader();r.onload=e=>{const rows=String(e.target.result).split(/\r?\n/).map(l=>l.split(/\t|,/));const hdr=rows.shift().map(x=>x.trim().toLowerCase());const g=(n)=>hdr.indexOf(n);rows.forEach(c=>{if(c.length<13)return;const deb=Number(c[g("debamt")]||0)||0;const crd=Number(c[g("crdamt")]||0)||0;const s2=c[g("segnumt")]||c[g("segnumt")];const s3=c[g("segnumt")]||c[g("segnumt")];const s4=c[g("segnumf")]||c[g("segnumf")];const memo=c[g("lngdsc")]||"";if(deb>0){reclassItems.push({id:uid(),vendor:"Imported JE",invoiceNumber:"",amount:deb,fromSeg2:"",fromSeg3:"",fromSeg4:"",toSeg2:s2,toSeg3:s3,toSeg4:s4,memo})}if(crd>0){reclassItems.push({id:uid(),vendor:"Imported JE",invoiceNumber:"",amount:crd,fromSeg2:s2,fromSeg3:s3,fromSeg4:s4,toSeg2:"",toSeg3:"",toSeg4:"",memo})}});save();renderReclass();renderActivity()};r.readAsText(f)}
@@ -277,10 +295,12 @@ el("acct-build").addEventListener("click",()=>{buildAcctIndex();save()});
 el("tab-amort").onclick=()=>setMode("amort");
 el("tab-activity").onclick=()=>{setMode("activity");buildActivityDefaults()};
 el("tab-settings").onclick=()=>{setMode("settings");renderSettings()};
-el("act-refresh").onclick=renderActivity;
-el("act-select").addEventListener("change",()=>{el("act-search").value=el("act-select").value;renderActivity()});
-el("act-search").addEventListener("input",renderActivity);
-el("act-period").addEventListener("input",renderActivity);
+  el("act-refresh").onclick=renderActivity;
+  el("act-select").addEventListener("change",()=>{el("act-search").value=el("act-select").value;renderActivity()});
+  el("act-search").addEventListener("input",renderActivity);
+  el("act-period").addEventListener("input",renderActivity);
+  el("act-tab-sched").onclick=()=>{activitySection="schedule";renderActivity()};
+  el("act-tab-other").onclick=()=>{activitySection="other";renderActivity()};
 
 el("imp-sched").addEventListener("change",e=>{const f=e.target.files?.[0];if(f)handleImportSchedule(f)});
 el("imp-je").addEventListener("change",e=>{const f=e.target.files?.[0];if(f)handleImportJE(f)});

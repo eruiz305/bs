@@ -188,8 +188,12 @@
     </div>
 
     <div id="activity-view" style="display:none">
-      <div class="card">
-        <h2>Activity Browser & Amortization Schedule</h2>
+      <div class="tabs">
+        <button id="act-tab-sched" class="active">Amortization Schedule</button>
+        <button id="act-tab-other">Other</button>
+      </div>
+      <div class="card" id="act-sched-card">
+        <h2>Activity – Amortization Schedule</h2>
         <div class="content">
           <div class="grid3">
             <div><label>Account Combo</label><input id="act-search" type="text" placeholder="11415-000-02"/></div>
@@ -200,6 +204,11 @@
           <div id="act-summary" class="content"></div>
           <div id="act-table" class="scroll" style="margin-top:8px"></div>
         </div>
+      </div>
+
+      <div class="card" id="act-other-card" style="display:none">
+        <h2>Activity – Other</h2>
+        <div id="act-other" class="content"></div>
       </div>
 
       <div class="card">
