@@ -36,27 +36,32 @@ function isPeriodClosed(it){
   try{return new Date(d)<new Date(periodEnd)}catch{return false}
 }
 
+let fs=null;
+try{fs=require("fs");}catch{}
 
-const MASTER_FILE="master_schedule.xlsx";
+const DEFAULT_MASTER_FILE="C:\\Users\\eruiz\\OneDrive - Sun Orchard, LLC\\Desktop\\BS_Reconciler_App\\master_schedule.xlsx";
+let masterFilePath=DEFAULT_MASTER_FILE;
 const MASTER_SHEET="Master";
 let masterWB=null;
 let latestClosedPeriod=null;
 
 async function loadMasterFile(){
+  masterWB=null;
   try{
-    const resp=await fetch(MASTER_FILE);
-    if(!resp.ok) throw new Error("missing");
-    const data=new Uint8Array(await resp.arrayBuffer());
-    masterWB=XLSX.read(data,{type:"array"});
-  }catch{
-    masterWB=XLSX.utils.book_new();
-    const ws=XLSX.utils.json_to_sheet([]);
-    XLSX.utils.book_append_sheet(masterWB,ws,MASTER_SHEET);
-    saveMasterFile();
-  }
+    if(fs && masterFilePath && fs.existsSync(masterFilePath)){
+      const data=fs.readFileSync(masterFilePath);
+      masterWB=XLSX.read(data,{type:"buffer"});
+    }else if(typeof fetch!=="undefined"){
+      const resp=await fetch(masterFilePath);
+      if(resp.ok){
+        const data=new Uint8Array(await resp.arrayBuffer());
+        masterWB=XLSX.read(data,{type:"array"});
+      }
+    }
+  }catch{}
   computeLatestClosedPeriod();
 }
-function saveMasterFile(){if(masterWB) XLSX.writeFile(masterWB,MASTER_FILE);} 
+function saveMasterFile(){if(masterWB) XLSX.writeFile(masterWB,masterFilePath);}
 function computeLatestClosedPeriod(){
   latestClosedPeriod=null;
   if(!masterWB) return;
@@ -66,7 +71,11 @@ function computeLatestClosedPeriod(){
   rows.forEach(r=>{const d=parseDate(r.period||r.trndat||r.date);if(d&&(!latestClosedPeriod||d>latestClosedPeriod))latestClosedPeriod=d;});
 }
 function appendToMaster(rows){
-  if(!masterWB) return;
+  if(!masterWB){
+    masterWB=XLSX.utils.book_new();
+    const ws=XLSX.utils.json_to_sheet([]);
+    XLSX.utils.book_append_sheet(masterWB,ws,MASTER_SHEET);
+  }
   const ws=masterWB.Sheets[MASTER_SHEET]||XLSX.utils.json_to_sheet([]);
   const existing=XLSX.utils.sheet_to_json(ws);
   const all=existing.concat(rows);
@@ -77,8 +86,8 @@ function appendToMaster(rows){
 function isClosed(d){return latestClosedPeriod&&new Date(d)<=latestClosedPeriod;}
 
 
-function save(){localStorage.setItem(STORAGE,JSON.stringify({profile,actionsByKey,items,reclassItems,periodEnd,fiscalYY,actualMM,seqStart,journalTitle,acctSheet,acctCols,defaults}))}
-function load(){try{const s=localStorage.getItem(STORAGE);if(s){const o=JSON.parse(s);profile=o.profile||profile;actionsByKey=o.actionsByKey||{};items=o.items||[];reclassItems=o.reclassItems||[];periodEnd=o.periodEnd||"";fiscalYY=o.fiscalYY||"";actualMM=o.actualMM||"";seqStart=o.seqStart||"01";journalTitle=o.journalTitle||journalTitle;acctSheet=o.acctSheet||"";acctCols=o.acctCols||acctCols;defaults=o.defaults||defaults;if(!defaults.groups)defaults.groups=[]}}catch{}}
+function save(){localStorage.setItem(STORAGE,JSON.stringify({profile,actionsByKey,items,reclassItems,periodEnd,fiscalYY,actualMM,seqStart,journalTitle,acctSheet,acctCols,defaults,masterFilePath}))}
+function load(){try{const s=localStorage.getItem(STORAGE);if(s){const o=JSON.parse(s);profile=o.profile||profile;actionsByKey=o.actionsByKey||{};items=o.items||[];reclassItems=o.reclassItems||[];periodEnd=o.periodEnd||"";fiscalYY=o.fiscalYY||"";actualMM=o.actualMM||"";seqStart=o.seqStart||"01";journalTitle=o.journalTitle||journalTitle;acctSheet=o.acctSheet||"";acctCols=o.acctCols||acctCols;defaults=o.defaults||defaults;masterFilePath=o.masterFilePath||masterFilePath;if(!defaults.groups)defaults.groups=[]}}catch{}}
 
 
 function renderProfile(){const name=profile.first&&profile.last?`${profile.first} ${profile.last}`:"Not set";setText("user-line",`${name} · ${profile.email||""}`);setText("user-badge",name?`${name}`:"Not signed in");el("login").style.display=(profile.email? "none":"flex")}
@@ -467,6 +476,7 @@ function renderSettings(){
   el("set-amm").value=defaults.amm||actualMM||"";
   el("set-amemo").value=defaults.amemo||"";
   el("set-jnltitle").value=defaults.jnltitle||journalTitle||"";
+  el("set-masterfile").value=masterFilePath||"";
 
   renderGroupTable();
 }
@@ -475,9 +485,11 @@ el("set-save").onclick=()=>{
   defaults.amm=el("set-amm").value.replace(/[^0-9]/g,"").slice(-2);
   defaults.amemo=el("set-amemo").value||defaults.amemo;
   defaults.jnltitle=el("set-jnltitle").value||defaults.jnltitle;
+  masterFilePath=el("set-masterfile").value.trim()||masterFilePath;
   if(!fiscalYY)fiscalYY=defaults.fyy; if(!actualMM)actualMM=defaults.amm; if(!journalTitle)journalTitle=defaults.jnltitle;
   el("fiscalYY").value=fiscalYY; el("actualMM").value=actualMM; el("jnlTitle").value=journalTitle;
   save();
+  loadMasterFile();
   buildGroupFilter();buildActivitySelect();
 };
 el("grp-add").onclick=()=>{defaults.groups.push({group:"",seg2:"",seg3:"",seg4:""});renderGroupTable()};
