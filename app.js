@@ -57,8 +57,9 @@ function addSelectedToReclass(){const picks=groups.filter(g=>actionsByKey[g.key]
 
 function buildSchedule(it){const src=it.source,a=it.amort;if(!a.enabled||!a.months)return[];const base=Number(src.amount)||0;const sDate=a.startDate?new Date(a.startDate):new Date();const first=a.postOn==="EOM"?eom(sDate):sDate;const exp=(a.expSeg2||"")+"-"+(a.expSeg3||"")+"-"+(a.expSeg4||"");const ast=(it.asset.seg2||src.seg2||"")+"-"+(it.asset.seg3||src.seg3||"")+"-"+(it.asset.seg4||src.seg4||"");const rows=[];const memo=(st,en)=> (a.memoTemplate||defaults.amemo).replace("{{vendor}}",src.vendor||"").replace("{{invnum}}",src.invoiceNumber||"").replace("{{start}}",toISO(st)).replace("{{end}}",toISO(en));if(a.method==="straight"){const per=round2(base/a.months);let acc=0;for(let i=0;i<a.months;i++){const d=a.postOn==="EOM"?eom(addMonths(first,i)):addMonths(first,i);const amt=i===a.months-1?round2(base-acc):per;acc=round2(acc+amt);rows.push({date:d,amount:amt,debitCombo:exp,creditCombo:ast,memo:memo(first,a.postOn==="EOM"?eom(addMonths(first,a.months-1)):addMonths(first,a.months-1))})}}else{const dim=new Date(first.getFullYear(),first.getMonth()+1,0).getDate();const firstDays=dim-first.getDate()+1;const daily=base/(firstDays+(a.months-1)*30);let acc=0;for(let i=0;i<a.months;i++){const d=a.postOn==="EOM"?eom(addMonths(first,i)):addMonths(first,i);const days=i===0?firstDays:30;const amt=i===a.months-1?round2(base-acc):round2(daily*days);acc=round2(acc+amt);rows.push({date:d,amount:amt,debitCombo:exp,creditCombo:ast,memo:memo(first,a.postOn==="EOM"?eom(addMonths(first,a.months-1)):addMonths(first,a.months-1))})}}return rows}
 
-function acctKey(a,b,c){return `${String(a||"")}-${String(b||"")}-${String(c||"")}`} 
+function acctKey(a,b,c){return `${String(a||"")}-${String(b||"")}-${String(c||"")}`}
 function acctLookup(a,b,c){return acctMap.get(acctKey(a,b,c))||null}
+function parseCombos(str){return (str||"").split(",").map(s=>s.trim()).filter(Boolean)}
 
 function renderItems(){
   const host=el("items");host.innerHTML="";
@@ -236,18 +237,38 @@ function loadWorkbook(file){
   reader.readAsArrayBuffer(file);
 }
 
-function buildActivitySelect(){const sel=el("act-select");sel.innerHTML="";acctList.slice(0,4000).forEach(a=>{const o=document.createElement("option");o.value=a.key;o.textContent=`${a.key} — ${a.desc}`;sel.appendChild(o)})}
+function buildActivitySelect(){
+  const sel=el("act-select");sel.innerHTML="";
+  const selected=parseCombos(el("act-search").value);
+  acctList.slice(0,4000).forEach(a=>{
+    const o=document.createElement("option");
+    o.value=a.key;o.textContent=`${a.key} — ${a.desc}`;
+    o.selected=selected.includes(a.key);
+    sel.appendChild(o);
+  });
+}
 
 function renderActivity(){
   const ref=el("act-period").value||toISO(new Date());
-  const combo=(el("act-search").value||el("act-select").value||"").trim();
-  const sum=el("act-summary");const host=el("act-table");sum.innerHTML="";host.innerHTML="";
-  if(!combo){sum.innerHTML='<span class="small">Enter or select an account combo.</span>';return}
-  const calc=actCalcForCombo(combo,ref);const tb=actTBForCombo(combo,ref);const months=calc.months;
+  const sel=el("act-select");
+  let combos=parseCombos(el("act-search").value);
+  if(!combos.length) combos=Array.from(sel.selectedOptions).map(o=>o.value);
+  combos=[...new Set(combos)];
+  Array.from(sel.options).forEach(o=>o.selected=combos.includes(o.value));
+  el("act-search").value=combos.join(", ");
+  const sum=el("act-summary"),host=el("act-table");sum.innerHTML="";host.innerHTML="";
+  if(!combos.length){sum.innerHTML='<span class="small">Enter or select an account combo.</span>';return}
+  const months=actMonths(ref);
+  const calcMap=Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}]));
+  const tbMap=detailTB.length?Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}])):null;
+  combos.forEach(c=>{
+    const calc=actCalcForCombo(c,ref);months.forEach(m=>{const k=monthKey(m);calcMap[k].dr+=calc.map[k].dr;calcMap[k].cr+=calc.map[k].cr});
+    if(tbMap){const tb=actTBForCombo(c,ref);if(tb)months.forEach(m=>{const k=monthKey(m);tbMap[k].dr+=tb.map[k].dr;tbMap[k].cr+=tb.map[k].cr})}
+  });
   const hdr=`<tr><th>Row</th>${months.map(m=>`<th class="num">${m.toLocaleString(undefined,{month:"short"})} Dr</th><th class="num">${m.toLocaleString(undefined,{month:"short"})} Cr</th>`).join("")}<th class="num">Total Dr</th><th class="num">Total Cr</th></tr>`;
   const rowFrom=(label,mp)=>`<tr><td>${label}</td>${months.map(m=>{const k=monthKey(m);const v=mp[k]||{dr:0,cr:0};return `<td class="num">${fmtUSD.format(v.dr)}</td><td class="num">${fmtUSD.format(v.cr)}</td>`}).join("")}<td class="num">${fmtUSD.format(months.reduce((a,m)=>a+(mp[monthKey(m)]?.dr||0),0))}</td><td class="num">${fmtUSD.format(months.reduce((a,m)=>a+(mp[monthKey(m)]?.cr||0),0))}</td></tr>`;
-  const t=document.createElement("table");t.innerHTML=`<thead>${hdr}</thead><tbody>${rowFrom("Calculated",calc.map)}${tb?rowFrom("TB",tb.map):""}</tbody>`;host.appendChild(t);
-  const desc=acctLookup(...combo.split("-"));sum.innerHTML=`<div class="row"><span class="pill">${combo}</span><span class="small">${desc||""}</span></div>`;
+  const t=document.createElement("table");t.innerHTML=`<thead>${hdr}</thead><tbody>${rowFrom("Calculated",calcMap)}${tbMap?rowFrom("TB",tbMap):""}</tbody>`;host.appendChild(t);
+  sum.innerHTML=combos.map(c=>{const desc=acctLookup(...c.split("-"));return `<div class=\"row\"><span class=\"pill\">${c}</span><span class=\"small\">${desc||""}</span></div>`}).join("");
 }
 function actMonths(ref){const arr=[];const base=ref?new Date(ref):new Date();for(let i=0;i<12;i++){const d=new Date(base.getFullYear(),base.getMonth()-11+i,1);arr.push(new Date(d.getFullYear(),d.getMonth(),1))}return arr}
 function monthKey(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")}
@@ -278,7 +299,12 @@ el("tab-amort").onclick=()=>setMode("amort");
 el("tab-activity").onclick=()=>{setMode("activity");buildActivityDefaults()};
 el("tab-settings").onclick=()=>{setMode("settings");renderSettings()};
 el("act-refresh").onclick=renderActivity;
-el("act-select").addEventListener("change",()=>{el("act-search").value=el("act-select").value;renderActivity()});
+el("act-select").addEventListener("change",()=>{
+  const sel=el("act-select");
+  const vals=Array.from(sel.selectedOptions).map(o=>o.value);
+  el("act-search").value=vals.join(", ");
+  renderActivity();
+});
 el("act-search").addEventListener("input",renderActivity);
 el("act-period").addEventListener("input",renderActivity);
 
