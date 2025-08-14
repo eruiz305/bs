@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Sun Orchard | BS Reconciler (No-Install)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <style>
+    :root{
+      --border:#e5e7eb;--ink:#0f172a;--muted:#475569;--bg:#f6f7fb;--accent:#0ea5e9;
+      --ok:#10b981;--bad:#ef4444;--tabIdleBg:#e6f3fb;--tabIdleInk:#074e74;
+    }
+    *{box-sizing:border-box}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+    .container{max-width:1200px;margin:24px auto;padding:0 16px}
+    .bar{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:8px}
+    .tabs{display:flex;gap:8px}
+    .tabs button{border:1px solid var(--border);padding:8px 12px;border-radius:8px;cursor:pointer}
+    .tabs button.active{background:var(--accent);color:#fff}
+    .tabs button:not(.active){background:var(--tabIdleBg);color:var(--tabIdleInk)}
+    .card{background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 1px 2px rgba(0,0,0,.04);margin:12px 0;overflow:hidden}
+    .card h2{margin:0;padding:12px 16px;border-bottom:1px solid var(--border);font-size:16px}
+    .content{padding:16px}
+    .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+    label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
+    input,select,button{font:inherit}
+    input[type="text"],input[type="number"],input[type="date"],select{
+      border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;min-width:0;width:100%;background:white
+    }
+    input[readonly]{background:#f3f4f6} /* grey out read-only */
+    button{border:1px solid #cbd5e1;background:var(--accent);color:white;padding:8px 12px;border-radius:8px;cursor:pointer}
+    button.secondary{background:#e2e8f0;color:var(--ink)}
+    button.ghost{background:white;border-color:var(--border);color:var(--ink)}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid var(--border);padding:8px;text-align:left;vertical-align:top}
+    th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
+    .pill{display:inline-block;background:#e0f2fe;border:1px solid #bae6fd;color:#075985;padding:2px 8px;border-radius:999px;font-size:12px}
+    .badge-ok{background:var(--ok);color:white;border-radius:999px;padding:4px 8px;font-size:12px}
+    .badge-bad{background:var(--bad);color:white;border-radius:999px;padding:4px 8px;font-size:12px}
+    .scroll{max-height:360px;overflow:auto;border:1px solid var(--border);border-radius:8px}
+    .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+    .grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+    .small{font-size:12px;color:var(--muted)}
+    .dialog-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center}
+    .dialog{background:white;border-radius:12px;width:min(920px,92vw);border:1px solid var(--border)}
+    .dialog h3{margin:0;padding:12px 16px;border-bottom:1px solid var(--border)}
+    .status{display:flex;align-items:center;gap:6px}
+    .status .ok{color:var(--ok)} .status .bad{color:var(--bad)}
+    .login{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:#0f172a10}
+    .login .panel{background:white;border:1px solid var(--border);border-radius:12px;max-width:480px;width:92vw;padding:16px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="bar">
+      <div style="font-weight:700">Sun Orchard Balance Sheet Reconciler</div>
+      <div class="tabs">
+        <button id="tab-amort" class="active">Amortization Builder</button>
+        <button id="tab-activity">Account Activity & Schedules</button>
+        <button id="tab-settings">Settings</button>
+      </div>
+      <div class="row">
+        <span class="small" id="user-badge"></span>
+        <button id="edit-user" class="secondary">Profile</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>0) Login</h2>
+      <div class="content">
+        <div class="row">
+          <span class="small">Signed in as <b id="user-line">Not set</b></span>
+          <button id="force-login" class="secondary">Update</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="amort-view">
+      <div class="card">
+        <h2>1) Upload Workbook</h2>
+        <div class="content">
+          <div class="row">
+            <input id="file" type="file" accept=".xlsx,.xls"/>
+            <span id="fname" class="small">No file loaded</span>
+          </div>
+          <div id="detected" class="small" style="margin-top:8px;display:none"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>2) Map AP Module Columns</h2>
+        <div id="map-area" class="content grid4"></div>
+      </div>
+
+      <div class="card">
+        <h2>2b) Load/Map GL Accounts</h2>
+        <div class="content grid4">
+          <div><label>Sheet</label><select id="acct-sheet"></select></div>
+          <div><label>Account (Seg2)</label><select id="acct-seg2"></select></div>
+          <div><label>Department (Seg3)</label><select id="acct-seg3"></select></div>
+          <div><label>Location (Seg4)</label><select id="acct-seg4"></select></div>
+          <div style="grid-column:1/-1"><label>Description</label><select id="acct-desc"></select></div>
+          <div><label>Active Flag (optional)</label><select id="acct-active"></select></div>
+          <div class="row" style="grid-column:1/-1">
+            <button id="acct-build">Rebuild Account Index</button>
+            <span class="small" id="acct-stats">0 accounts loaded</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>3) Select AP Invoices (Grouped)</h2>
+        <div class="content">
+          <div class="row" style="justify-content:space-between">
+            <div class="small">Selected total: <b id="sel-total">$0.00</b></div>
+            <div class="row">
+              <button id="add-to-amort" disabled>Add to Amortizations</button>
+              <button id="add-to-reclass" class="secondary" disabled>Add to Reclass Queue</button>
+            </div>
+          </div>
+          <div class="scroll" style="margin-top:8px">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:36px"><input id="chk-all" type="checkbox" title="Select all for Amortize"/></th>
+                  <th>Invoice #</th><th>Vendor</th><th>Invoice Date</th>
+                  <th class="num">Amount</th><th>Acct Combo</th><th>Lines</th>
+                  <th>JE Reclass</th><th>Amortize</th>
+                </tr>
+              </thead>
+              <tbody id="ap-groups"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>4) Configure & Build Schedules</h2>
+        <div class="content">
+          <div class="row">
+            <button id="rebuild-all">Build / Rebuild All</button>
+            <span id="missing" class="small" style="color:#b45309;display:none">Some items have no schedule yet.</span>
+            <button id="clear-items" class="secondary">Clear Schedules</button>
+          </div>
+          <div id="items" class="grid2" style="margin-top:12px"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>5) TB Reference & Checks</h2>
+        <div class="content">
+          <div class="row" style="align-items:center">
+            <span id="ap-check" class="badge-bad" style="display:none">Mismatch</span>
+            <span class="small">AP Module total: <b id="ap-total">$0.00</b></span>
+            <span class="small">Summary TB AP+BCHCLS (Net Dr−Cr): <b id="tb-total">$0.00</b></span>
+            <span class="small">Δ <b id="tb-diff">$0.00</b></span>
+          </div>
+          <div id="summarytb" class="scroll" style="margin-top:8px;max-height:240px;display:none"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>6) Reclass Queue (from AP)</h2>
+        <div class="content">
+          <div id="reclass-items" class="grid2"></div>
+          <div class="small" id="reclass-empty">No items queued.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>7) Export .txt for AFS</h2>
+        <div class="content">
+          <div class="grid4">
+            <div><label>Period End (trndat)</label><input id="periodEnd" type="date"/></div>
+            <div><label>Fiscal Year (YY)</label><input id="fiscalYY" type="text" maxlength="2"/></div>
+            <div><label>Actual Month (MM)</label><input id="actualMM" type="text" maxlength="2"/></div>
+            <div><label>Starting Seq (##)</label><input id="seqStart" type="text" maxlength="2" value="01"/></div>
+            <div style="grid-column:1/-1"><label>Journal Title (jnldsc)</label><input id="jnlTitle" type="text" value="Standard Amortization Entry"/></div>
+          </div>
+          <div class="row" style="margin-top:12px">
+            <button id="export">Export .txt</button>
+            <span class="small">Headers included; current-period activity only; co_num=01, jnlsrc=GL, modsrc=GL.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="activity-view" style="display:none">
+      <div class="card">
+        <h2>Activity Browser & Amortization Schedule</h2>
+        <div class="content">
+          <div class="grid3">
+            <div><label>Account Combo</label><input id="act-search" type="text" placeholder="11415-000-02"/></div>
+            <div><label>Select From GL Accounts</label><select id="act-select"></select></div>
+            <div><label>Reference Period End</label><input id="act-period" type="date"/></div>
+          </div>
+          <div class="row" style="margin-top:8px"><button id="act-refresh">Refresh</button></div>
+          <div id="act-summary" class="content"></div>
+          <div id="act-table" class="scroll" style="margin-top:8px"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Optional Import</h2>
+        <div class="content grid3">
+          <div>
+            <label>Import Schedule CSV</label>
+            <input id="imp-sched" type="file" accept=".csv"/>
+            <div class="small">Columns: date,amount,debitSeg2,debitSeg3,debitSeg4,creditSeg2,creditSeg3,creditSeg4,memo</div>
+            <div class="row" style="margin-top:6px"><button id="dl-sched" class="secondary">Download Schedule CSV template</button></div>
+          </div>
+          <div>
+            <label>Import JE CSV/TXT</label>
+            <input id="imp-je" type="file" accept=".csv,.txt"/>
+            <div class="small">Columns (tab/CSV): Trndat,Jnlsrc,Jnlidn,Jnldsc,Modsrc,Co_num,SegnumT,SegnumT,SegnumF,SegnumF,DebAmt,CrdAmt,lngdsc</div>
+            <div class="row" style="margin-top:6px"><button id="dl-je" class="secondary">Download JE TXT template</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="settings-view" style="display:none">
+      <div class="card">
+        <h2>Settings</h2>
+        <div class="content grid3">
+          <div><label>Default Fiscal Year (YY)</label><input id="set-fyy" type="text" maxlength="2"/></div>
+          <div><label>Default Actual Month (MM)</label><input id="set-amm" type="text" maxlength="2"/></div>
+          <div style="grid-column:1/-1"><label>Default Amort Memo Template</label><input id="set-amemo" type="text" placeholder="{{vendor}} {{invnum}} amortization ({{start}}–{{end}})"/></div>
+          <div style="grid-column:1/-1"><label>Default Journal Title</label><input id="set-jnltitle" type="text" placeholder="Standard Amortization Entry"/></div>
+          <div class="row" style="grid-column:1/-1;margin-top:6px">
+            <button id="set-save">Save</button>
+            <span class="small">These defaults prefill Export and new amortizations.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="dlg" class="dialog-backdrop">
+    <div class="dialog">
+      <h3 id="dlg-title"></h3>
+      <div id="dlg-body" class="content scroll" style="max-height:420px"></div>
+      <div class="content" style="text-align:right"><button id="dlg-close" class="ghost">Close</button></div>
+    </div>
+  </div>
+
+  <div id="login" class="login">
+    <div class="panel">
+      <h3 style="margin:0 0 12px">Sign in</h3>
+      <div class="grid2">
+        <div><label>First Name</label><input id="u-first" type="text"/></div>
+        <div><label>Last Name</label><input id="u-last" type="text"/></div>
+        <div style="grid-column:1/-1"><label>Email</label><input id="u-email" type="text"/></div>
+      </div>
+      <div class="row" style="margin-top:12px;justify-content:flex-end">
+        <button id="u-save">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
