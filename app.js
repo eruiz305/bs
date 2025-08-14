@@ -100,21 +100,27 @@ function openProfile(){el("u-first").value=profile.first||"";el("u-last").value=
 function applyProfile(){profile.first=el("u-first").value.trim();profile.last=el("u-last").value.trim();profile.email=el("u-email").value.trim();save();renderProfile()}
 
 function setMode(m){
-  mode=m;
-  el("home-view").style.display=m==="home"?"block":"none";
-  el("app-bar").style.display=m==="home"?"none":"flex";
-  el("home-btn").style.display=m==="home"?"none":"inline-block";
-  el("login-card").style.display=m==="home"?"none":"block";
-  el("amort-view").style.display=m==="amort"?"block":"none";
-  el("activity-view").style.display=m==="activity"?"block":"none";
-  el("settings-view").style.display=m==="settings"?"block":"none";
-  el("recon-view").style.display=m==="recon"?"block":"none";
-  el("intangible-view").style.display=m==="intangible"?"block":"none";
-  el("accrual-view").style.display=m==="accrual"?"block":"none";
-  el("tab-amort").classList.toggle("active",m==="amort");
-  el("tab-activity").classList.toggle("active",m==="activity");
-  el("tab-settings").classList.toggle("active",m==="settings");
-  el("tab-recon").classList.toggle("active",m==="recon");
+  mode = m;
+
+  ["home","amort","activity","settings","recon","intangible","accrual"].forEach(v => {
+    const view = el(`${v}-view`);
+    if (view) view.style.display = v === m ? "block" : "none";
+  });
+
+  if (m === "home") {
+    el("app-bar").style.display = "none";
+    el("home-btn").style.display = "none";
+    el("login-card").style.display = "none";
+    return;
+  }
+
+  el("app-bar").style.display = "flex";
+  el("home-btn").style.display = "inline-block";
+  el("login-card").style.display = "block";
+
+  ["amort","activity","settings","recon"].forEach(t => {
+    el(`tab-${t}`).classList.toggle("active", m === t);
+  });
 }
 
 function renderMapUI(){
