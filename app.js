@@ -17,7 +17,9 @@ let wbSheets={},wbNames=[];
 let apRows=[],apCols=[],mapCols={},groups=[],detailGroup=null,summaryTB=[],detailTB=[];
 let acctSheet="",acctCols={seg2:"",seg3:"",seg4:"",desc:"",active:""},acctMap=new Map(),acctList=[];
 let actionsByKey={},items=[],reclassItems=[];
+
 let periodEnd="",fiscalYY="",actualMM="",seqStart="01",journalTitle="Standard Amortization Entry";
+
 let defaults={fyy:"",amm:"",amemo:"{{vendor}} {{invnum}} amortization ({{start}}–{{end}})",jnltitle:"Standard Amortization Entry"};
 let mode="amort";
 
@@ -60,8 +62,10 @@ function appendToMaster(rows){
 }
 function isClosed(d){return latestClosedPeriod&&new Date(d)<=latestClosedPeriod;}
 
+
 function save(){localStorage.setItem(STORAGE,JSON.stringify({profile,actionsByKey,items,reclassItems,periodEnd,fiscalYY,actualMM,seqStart,journalTitle,acctSheet,acctCols,defaults}))}
-function load(){try{const s=localStorage.getItem(STORAGE);if(s){const o=JSON.parse(s);profile=o.profile||profile;actionsByKey=o.actionsByKey||{};items=o.items||[];reclassItems=o.reclassItems||[];periodEnd=o.periodEnd||"";fiscalYY=o.fiscalYY||"";actualMM=o.actualMM||"";seqStart=o.seqStart||"01";journalTitle=o.journalTitle||journalTitle;acctSheet=o.acctSheet||"";acctCols=o.acctCols||acctCols;defaults=o.defaults||defaults}}catch{}}
+function load(){try{const s=localStorage.getItem(STORAGE);if(s){const o=JSON.parse(s);profile=o.profile||profile;actionsByKey=o.actionsByKey||{};items=o.items||[];reclassItems=o.reclassItems||[];periodEnd=o.periodEnd||"";fiscalYY=o.fiscalYY||"";actualMM=o.actualMM||"";seqStart=o.seqStart||"01";journalTitle=o.journalTitle||journalTitle;acctSheet=o.acctSheet||"";acctCols=o.acctCols||acctCols;defaults=o.defaults||defaults;if(!defaults.groups)defaults.groups=[]}}catch{}}
+
 
 function renderProfile(){const name=profile.first&&profile.last?`${profile.first} ${profile.last}`:"Not set";setText("user-line",`${name} · ${profile.email||""}`);setText("user-badge",name?`${name}`:"Not signed in");el("login").style.display=(profile.email? "none":"flex")}
 function openProfile(){el("u-first").value=profile.first||"";el("u-last").value=profile.last||"";el("u-email").value=profile.email||"";el("login").style.display="flex"}
@@ -72,9 +76,11 @@ function setMode(m){
   el("amort-view").style.display=m==="amort"?"block":"none";
   el("activity-view").style.display=m==="activity"?"block":"none";
   el("settings-view").style.display=m==="settings"?"block":"none";
+  el("recon-view").style.display=m==="recon"?"block":"none";
   el("tab-amort").classList.toggle("active",m==="amort");
   el("tab-activity").classList.toggle("active",m==="activity");
   el("tab-settings").classList.toggle("active",m==="settings");
+  el("tab-recon").classList.toggle("active",m==="recon");
 }
 
 function renderMapUI(){
@@ -90,6 +96,7 @@ function openDetail(g){detailGroup=g;el("dlg-title").textContent=`Invoice ${g.in
 
 function renderSelectedTotal(){const total=groups.filter(g=>actionsByKey[g.key]?.amortize).reduce((a,b)=>a+(b.amount||0),0);setText("sel-total",fmtUSD.format(total))}
 function updateActionButtons(){const anyAm=groups.some(g=>actionsByKey[g.key]?.amortize);const anyRc=groups.some(g=>actionsByKey[g.key]?.reclass);el("add-to-amort").disabled=!anyAm;el("add-to-reclass").disabled=!anyRc}
+
 
 function addSelectedToAmort(){
   const picks=groups.filter(g=>actionsByKey[g.key]?.amortize);
@@ -110,10 +117,13 @@ function addSelectedToReclass(){
   save();renderReclass();
 }
 
+
 function buildSchedule(it){const src=it.source,a=it.amort;if(!a.enabled||!a.months)return[];const base=Number(src.amount)||0;const sDate=a.startDate?new Date(a.startDate):new Date();const first=a.postOn==="EOM"?eom(sDate):sDate;const exp=(a.expSeg2||"")+"-"+(a.expSeg3||"")+"-"+(a.expSeg4||"");const ast=(it.asset.seg2||src.seg2||"")+"-"+(it.asset.seg3||src.seg3||"")+"-"+(it.asset.seg4||src.seg4||"");const rows=[];const memo=(st,en)=> (a.memoTemplate||defaults.amemo).replace("{{vendor}}",src.vendor||"").replace("{{invnum}}",src.invoiceNumber||"").replace("{{start}}",toISO(st)).replace("{{end}}",toISO(en));if(a.method==="straight"){const per=round2(base/a.months);let acc=0;for(let i=0;i<a.months;i++){const d=a.postOn==="EOM"?eom(addMonths(first,i)):addMonths(first,i);const amt=i===a.months-1?round2(base-acc):per;acc=round2(acc+amt);rows.push({date:d,amount:amt,debitCombo:exp,creditCombo:ast,memo:memo(first,a.postOn==="EOM"?eom(addMonths(first,a.months-1)):addMonths(first,a.months-1))})}}else{const dim=new Date(first.getFullYear(),first.getMonth()+1,0).getDate();const firstDays=dim-first.getDate()+1;const daily=base/(firstDays+(a.months-1)*30);let acc=0;for(let i=0;i<a.months;i++){const d=a.postOn==="EOM"?eom(addMonths(first,i)):addMonths(first,i);const days=i===0?firstDays:30;const amt=i===a.months-1?round2(base-acc):round2(daily*days);acc=round2(acc+amt);rows.push({date:d,amount:amt,debitCombo:exp,creditCombo:ast,memo:memo(first,a.postOn==="EOM"?eom(addMonths(first,a.months-1)):addMonths(first,a.months-1))})}}return rows}
 
-function acctKey(a,b,c){return `${String(a||"")}-${String(b||"")}-${String(c||"")}`} 
+function acctKey(a,b,c){return `${String(a||"")}-${String(b||"")}-${String(c||"")}`}
 function acctLookup(a,b,c){return acctMap.get(acctKey(a,b,c))||null}
+
+function scheduleParams(it){return JSON.stringify({amount:it.source.amount,months:it.amort.months,start:toISO(it.amort.startDate),postOn:it.amort.postOn,method:it.amort.method,expSeg2:it.amort.expSeg2,expSeg3:it.amort.expSeg3,expSeg4:it.amort.expSeg4,assetSeg2:it.asset.seg2,assetSeg3:it.asset.seg3,assetSeg4:it.asset.seg4,memoTemplate:it.amort.memoTemplate})}
 
 function renderItems(){
   const host=el("items");host.innerHTML="";
@@ -122,42 +132,46 @@ function renderItems(){
 
   items.forEach(it=>{
     const card=document.createElement("div");card.className="card";
-    const h2=document.createElement("h2");h2.style.display="flex";h2.style.justifyContent="space-between";h2.style.alignItems="center";h2.innerHTML=`<span>${it.source.vendor} — ${it.source.invoiceNumber}</span>`;
-    const rm=document.createElement("button");rm.className="ghost";rm.textContent="Remove";rm.onclick=()=>{items=items.filter(x=>x.id!==it.id);save();renderItems()};h2.appendChild(rm);card.appendChild(h2);
+    const h2=document.createElement("h2");h2.style.display="flex";h2.style.justifyContent="space-between";h2.style.alignItems="center";
+    const title=document.createElement("span");title.textContent=`${it.source.vendor} — ${it.source.invoiceNumber}`;
+    const badge=document.createElement("span");badge.className="badge-bad";badge.textContent="Needs rebuild";badge.style.marginLeft="8px";title.appendChild(badge);h2.appendChild(title);
+    const btnWrap=document.createElement("span");btnWrap.style.display="flex";btnWrap.style.gap="8px";
+    const edit=document.createElement("button");edit.className="ghost";edit.textContent=it._editing?"Save":"Edit";
+    edit.onclick=()=>{if(it._editing){it._editing=false;it.schedule=buildSchedule(it);it._schedParams=scheduleParams(it);save();renderItems()}else{it._editing=true;renderItems()}};
+    const rm=document.createElement("button");rm.className="ghost";rm.textContent="Remove";rm.onclick=()=>{items=items.filter(x=>x.id!==it.id);save();renderItems()};
+    btnWrap.appendChild(edit);btnWrap.appendChild(rm);h2.appendChild(btnWrap);card.appendChild(h2);
 
     const c=document.createElement("div");c.className="content";
     const meta=document.createElement("div");meta.className="small";meta.style.marginBottom="8px";meta.textContent=`${toISO(it.source.invoiceDate)} · ${fmtUSD.format(it.source.amount)} · ${(it.source.seg2||"")}-${(it.source.seg3||"")}-${(it.source.seg4||"")}`;c.appendChild(meta);
     const grid=document.createElement("div");grid.className="grid3";
+
 
     const months=document.createElement("div");months.innerHTML=`<label>Months</label>`;const monthsIn=document.createElement("input");monthsIn.type="number";monthsIn.min=1;monthsIn.value=it.amort.months;monthsIn.oninput=()=>{it.amort.months=Number(monthsIn.value||0);save()};months.appendChild(monthsIn);grid.appendChild(months);
     const start=document.createElement("div");start.innerHTML=`<label>Start Date</label>`;const startIn=document.createElement("input");startIn.type="date";startIn.value=toISO(it.amort.startDate);startIn.oninput=()=>{const d=new Date(startIn.value);if(isClosed(d)){alert("Date in closed period");startIn.value=toISO(it.amort.startDate);return;}it.amort.startDate=d;save()};start.appendChild(startIn);grid.appendChild(start);
     const post=document.createElement("div");post.innerHTML=`<label>Post On</label>`;const postSel=document.createElement("select");postSel.innerHTML=`<option value="EOM">End of Month</option><option value="SameDay">Same Day</option>`;postSel.value=it.amort.postOn;postSel.onchange=()=>{it.amort.postOn=postSel.value;save()};post.appendChild(postSel);grid.appendChild(post);
     const method=document.createElement("div");method.innerHTML=`<label>Method</label>`;const methodSel=document.createElement("select");methodSel.innerHTML=`<option value="straight">Straight-line</option><option value="prorata">Prorata</option>`;methodSel.value=it.amort.method;methodSel.onchange=()=>{it.amort.method=methodSel.value;save()};method.appendChild(methodSel);grid.appendChild(method);
 
-    const exp2=document.createElement("div");exp2.innerHTML=`<label>Expense Account</label>`;const exp2in=document.createElement("input");exp2in.type="text";exp2in.value=it.amort.expSeg2||"";exp2in.oninput=()=>{it.amort.expSeg2=exp2in.value;save();mark()};exp2.appendChild(exp2in);grid.appendChild(exp2);
-    const exp3=document.createElement("div");exp3.innerHTML=`<label>Department</label>`;const exp3in=document.createElement("input");exp3in.type="text";exp3in.value=it.amort.expSeg3||"";exp3in.oninput=()=>{it.amort.expSeg3=exp3in.value;save();mark()};exp3.appendChild(exp3in);grid.appendChild(exp3);
-    const exp4=document.createElement("div");exp4.innerHTML=`<label>Location</label>`;const exp4in=document.createElement("input");exp4in.type="text";exp4in.value=it.amort.expSeg4||"";exp4in.oninput=()=>{it.amort.expSeg4=exp4in.value;save();mark()};exp4.appendChild(exp4in);grid.appendChild(exp4);
+
+    const exp2=document.createElement("div");exp2.innerHTML=`<label>Expense Account</label>`;const exp2in=document.createElement("input");exp2in.type="text";exp2in.value=it.amort.expSeg2||"";exp2in.readOnly=!it._editing;exp2in.oninput=()=>{it.amort.expSeg2=exp2in.value;save();mark()};exp2.appendChild(exp2in);grid.appendChild(exp2);
+    const exp3=document.createElement("div");exp3.innerHTML=`<label>Department</label>`;const exp3in=document.createElement("input");exp3in.type="text";exp3in.value=it.amort.expSeg3||"";exp3in.readOnly=!it._editing;exp3in.oninput=()=>{it.amort.expSeg3=exp3in.value;save();mark()};exp3.appendChild(exp3in);grid.appendChild(exp3);
+    const exp4=document.createElement("div");exp4.innerHTML=`<label>Location</label>`;const exp4in=document.createElement("input");exp4in.type="text";exp4in.value=it.amort.expSeg4||"";exp4in.readOnly=!it._editing;exp4in.oninput=()=>{it.amort.expSeg4=exp4in.value;save();mark()};exp4.appendChild(exp4in);grid.appendChild(exp4);
 
     const expStatus=document.createElement("div");expStatus.className="status";expStatus.innerHTML=`<span id="expIcon">✖</span><input id="expName" type="text" readonly placeholder="Account name" />`;grid.appendChild(expStatus);
 
     const hr=document.createElement("div");hr.style.gridColumn="1/-1";hr.style.borderTop="1px solid #e5e7eb";hr.style.marginTop="8px";grid.appendChild(hr);
 
-    const as2=document.createElement("div");as2.innerHTML=`<label>Asset Account</label>`;const as2in=document.createElement("input");as2in.type="text";as2in.value=it.asset.seg2||"";as2in.oninput=()=>{it.asset.seg2=as2in.value;save();mark()};as2.appendChild(as2in);grid.appendChild(as2);
-    const as3=document.createElement("div");as3.innerHTML=`<label>Department</label>`;const as3in=document.createElement("input");as3in.type="text";as3in.value=it.asset.seg3||"";as3in.oninput=()=>{it.asset.seg3=as3in.value;save();mark()};as3.appendChild(as3in);grid.appendChild(as3);
-    const as4=document.createElement("div");as4.innerHTML=`<label>Location</label>`;const as4in=document.createElement("input");as4in.type="text";as4in.value=it.asset.seg4||"";as4in.oninput=()=>{it.asset.seg4=as4in.value;save();mark()};as4.appendChild(as4in);grid.appendChild(as4);
+    const as2=document.createElement("div");as2.innerHTML=`<label>Asset Account</label>`;const as2in=document.createElement("input");as2in.type="text";as2in.value=it.asset.seg2||"";as2in.readOnly=!it._editing;as2in.oninput=()=>{it.asset.seg2=as2in.value;save();mark()};as2.appendChild(as2in);grid.appendChild(as2);
+    const as3=document.createElement("div");as3.innerHTML=`<label>Department</label>`;const as3in=document.createElement("input");as3in.type="text";as3in.value=it.asset.seg3||"";as3in.readOnly=!it._editing;as3in.oninput=()=>{it.asset.seg3=as3in.value;save();mark()};as3.appendChild(as3in);grid.appendChild(as3);
+    const as4=document.createElement("div");as4.innerHTML=`<label>Location</label>`;const as4in=document.createElement("input");as4in.type="text";as4in.value=it.asset.seg4||"";as4in.readOnly=!it._editing;as4in.oninput=()=>{it.asset.seg4=as4in.value;save();mark()};as4.appendChild(as4in);grid.appendChild(as4);
 
     const astStatus=document.createElement("div");astStatus.className="status";astStatus.innerHTML=`<span id="astIcon">✖</span><input id="astName" type="text" readonly placeholder="Account name" />`;grid.appendChild(astStatus);
 
-    const memo=document.createElement("div");memo.style.gridColumn="1/-1";memo.innerHTML=`<label>Memo Template</label>`;const memoIn=document.createElement("input");memoIn.type="text";memoIn.value=it.amort.memoTemplate||defaults.amemo;memoIn.oninput=()=>{it.amort.memoTemplate=memoIn.value;save()};memo.appendChild(memoIn);grid.appendChild(memo);
+    const memo=document.createElement("div");memo.style.gridColumn="1/-1";memo.innerHTML=`<label>Memo Template</label>`;const memoIn=document.createElement("input");memoIn.type="text";memoIn.value=it.amort.memoTemplate||defaults.amemo;memoIn.readOnly=!it._editing;memoIn.oninput=()=>{it.amort.memoTemplate=memoIn.value;save();updateDirty()};memo.appendChild(memoIn);grid.appendChild(memo);
 
-    const btns=document.createElement("div");btns.style.gridColumn="1/-1";
-    const build=document.createElement("button");build.className="secondary";build.textContent="Build Schedule";
-    build.onclick=()=>{it.schedule=buildSchedule(it);save();renderItems()};
-    const val=document.createElement("button");val.className="secondary";val.style.marginLeft="8px";val.textContent="Validate";
-    val.onclick=()=>mark(true);
-    btns.appendChild(build);btns.appendChild(val);grid.appendChild(btns);
+    c.appendChild(grid);
+    card.appendChild(c);
 
-    const scNote=document.createElement("div");scNote.style.gridColumn="1/-1";c.appendChild(grid);
+    const updateDirty=()=>{const needs=it.amort.enabled&&(scheduleParams(it)!==it._schedParams||!it.schedule?.length);badge.style.display=needs?'inline-block':'none'};
 
     function mark(){
       const exp=acctLookup(it.amort.expSeg2,it.amort.expSeg3,it.amort.expSeg4);
@@ -166,7 +180,7 @@ function renderItems(){
       const astIcon=astStatus.querySelector("#astIcon"), astName=astStatus.querySelector("#astName");
       if(exp){expIcon.textContent="✔";expIcon.className="ok";expName.value=exp}else{expIcon.textContent="✖";expIcon.className="bad";expName.value=""}
       if(ast){astIcon.textContent="✔";astIcon.className="ok";astName.value=ast}else{astIcon.textContent="✖";astIcon.className="bad";astName.value=""}
-      scNote.innerHTML="";
+      updateDirty();
     }
     mark();
 
@@ -183,11 +197,17 @@ function renderItems(){
       tbl.appendChild(tb);sc.appendChild(tbl);c.appendChild(sc);
     }
 
-    card.appendChild(c);host.appendChild(card);
+    host.appendChild(card);
+    updateDirty();
   });
 }
 
-function renderReclass(){const host=el("reclass-items");host.innerHTML="";el("reclass-empty").style.display=reclassItems.length?"none":"block";reclassItems.forEach(it=>{const card=document.createElement("div");card.className="card";const h2=document.createElement("h2");h2.style.display="flex";h2.style.justifyContent="space-between";h2.style.alignItems="center";h2.innerHTML=`<span>${it.vendor} — ${it.invoiceNumber}</span>`;const rm=document.createElement("button");rm.className="ghost";rm.textContent="Remove";rm.onclick=()=>{reclassItems=reclassItems.filter(x=>x.id!==it.id);save();renderReclass()};h2.appendChild(rm);card.appendChild(h2);const c=document.createElement("div");c.className="content";const meta=document.createElement("div");meta.className="small";meta.style.marginBottom="8px";meta.textContent=`From ${(it.fromSeg2||"")}-${(it.fromSeg3||"")}-${(it.fromSeg4||"")} · Amount ${fmtUSD.format(it.amount)}`;c.appendChild(meta);const grid=document.createElement("div");grid.className="grid3";const t2=document.createElement("div");t2.innerHTML=`<label>To Account</label>`;const t2in=document.createElement("input");t2in.type="text";t2in.value=it.toSeg2||"";t2in.oninput=()=>{it.toSeg2=t2in.value;save();mark()};t2.appendChild(t2in);grid.appendChild(t2);const t3=document.createElement("div");t3.innerHTML=`<label>Department</label>`;const t3in=document.createElement("input");t3in.type="text";t3in.value=it.toSeg3||"";t3in.oninput=()=>{it.toSeg3=t3in.value;save();mark()};t3.appendChild(t3in);grid.appendChild(t3);const t4=document.createElement("div");t4.innerHTML=`<label>Location</label>`;const t4in=document.createElement("input");t4in.type="text";t4in.value=it.toSeg4||"";t4in.oninput=()=>{it.toSeg4=t4in.value;save();mark()};t4.appendChild(t4in);grid.appendChild(t4);const memo=document.createElement("div");memo.style.gridColumn="1/-1";memo.innerHTML=`<label>Memo</label>`;const memoIn=document.createElement("input");memoIn.type="text";memoIn.value=it.memo||"";memoIn.oninput=()=>{it.memo=memoIn.value;save()};memo.appendChild(memoIn);grid.appendChild(memo);const note=document.createElement("div");note.style.gridColumn="1/-1";c.appendChild(grid);c.appendChild(note);function mark(){[t2in,t3in,t4in].forEach(x=>x.classList.remove("invalid"));const desc=acctLookup(it.toSeg2,it.toSeg3,it.toSeg4);note.innerHTML=desc?`<div class="valid-note">Target: ${desc}</div>`:(it.toSeg2||it.toSeg3||it.toSeg4)?`<div class="invalid-note">Target combo not found</div>`:""}mark();card.appendChild(c);host.appendChild(card)})}
+
+function renderReclass(){const host=el("reclass-items");host.innerHTML="";el("reclass-empty").style.display=reclassItems.length?"none":"block";reclassItems.forEach(it=>{const card=document.createElement("div");card.className="card";const locked=Object.keys(it.reconciled||{}).some(p=>p<=closingPeriod);const h2=document.createElement("h2");h2.style.display="flex";h2.style.justifyContent="space-between";h2.style.alignItems="center";h2.innerHTML=`<span>${it.vendor} — ${it.invoiceNumber}</span>`;const rm=document.createElement("button");rm.className="ghost";rm.textContent="Remove";rm.onclick=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');return;}reclassItems=reclassItems.filter(x=>x.id!==it.id);save();renderReclass()};h2.appendChild(rm);card.appendChild(h2);const c=document.createElement("div");c.className="content";const meta=document.createElement("div");meta.className="small";meta.style.marginBottom="8px";meta.textContent=`From ${(it.fromSeg2||"")}-${(it.fromSeg3||"")}-${(it.fromSeg4||"")} · Amount ${fmtUSD.format(it.amount)}`;c.appendChild(meta);const grid=document.createElement("div");grid.className="grid3";const t2=document.createElement("div");t2.innerHTML=`<label>To Account</label>`;const t2in=document.createElement("input");t2in.type="text";t2in.value=it.toSeg2||"";t2in.oninput=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');t2in.value=it.toSeg2||'';return;}it.toSeg2=t2in.value;save();mark()};t2.appendChild(t2in);grid.appendChild(t2);const t3=document.createElement("div");t3.innerHTML=`<label>Department</label>`;const t3in=document.createElement("input");t3in.type="text";t3in.value=it.toSeg3||"";t3in.oninput=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');t3in.value=it.toSeg3||'';return;}it.toSeg3=t3in.value;save();mark()};t3.appendChild(t3in);grid.appendChild(t3);const t4=document.createElement("div");t4.innerHTML=`<label>Location</label>`;const t4in=document.createElement("input");t4in.type="text";t4in.value=it.toSeg4||"";t4in.oninput=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');t4in.value=it.toSeg4||'';return;}it.toSeg4=t4in.value;save();mark()};t4.appendChild(t4in);grid.appendChild(t4);const memo=document.createElement("div");memo.style.gridColumn="1/-1";memo.innerHTML=`<label>Memo</label>`;const memoIn=document.createElement("input");memoIn.type="text";memoIn.value=it.memo||"";memoIn.oninput=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');memoIn.value=it.memo||'';return;}it.memo=memoIn.value;save()};memo.appendChild(memoIn);grid.appendChild(memo);const note=document.createElement("div");note.style.gridColumn="1/-1";c.appendChild(grid);c.appendChild(note);function mark(){[t2in,t3in,t4in].forEach(x=>x.classList.remove("invalid"));const desc=acctLookup(it.toSeg2,it.toSeg3,it.toSeg4);note.innerHTML=desc?`<div class="valid-note">Target: ${desc}</div>`:(it.toSeg2||it.toSeg3||it.toSeg4)?`<div class="invalid-note">Target combo not found</div>`:""}mark();card.appendChild(c);if(locked){const ov=document.createElement('div');ov.style.position='absolute';ov.style.inset='0';ov.style.background='rgba(255,255,255,0.6)';ov.style.display='flex';ov.style.alignItems='center';ov.style.justifyContent='center';ov.style.fontWeight='700';ov.textContent='Reconciled';ov.onclick=()=>alert('Transaction is reconciled and cannot be edited');card.style.position='relative';card.appendChild(ov);}host.appendChild(card)})}
+
+function renderReconciliation(){const host=el('recon-table');if(!host)return;const period=el('recon-period').value||closingPeriod||"";const t=document.createElement('table');t.innerHTML='<thead><tr><th>Type</th><th>Info</th><th>Account</th><th>Reconciled</th></tr></thead>';const tb=document.createElement('tbody');items.forEach(it=>{const combo=`${it.asset.seg2||it.source.seg2||""}-${it.asset.seg3||it.source.seg3||""}-${it.asset.seg4||it.source.seg4||""}`;const tr=document.createElement('tr');tr.innerHTML=`<td>Amort</td><td>${it.source.vendor} ${it.source.invoiceNumber}</td><td>${combo}</td>`;const td=document.createElement('td');const chk=document.createElement('input');chk.type='checkbox';chk.checked=!!(it.reconciled&&it.reconciled[period]);chk.onchange=()=>{it.reconciled=it.reconciled||{};if(chk.checked)it.reconciled[period]=true;else delete it.reconciled[period];save();renderItems();renderReclass();};td.appendChild(chk);tr.appendChild(td);tb.appendChild(tr)});reclassItems.forEach(it=>{const combo=`${it.fromSeg2||""}-${it.fromSeg3||""}-${it.fromSeg4||""}`;const tr=document.createElement('tr');tr.innerHTML=`<td>Reclass</td><td>${it.vendor} ${it.invoiceNumber}</td><td>${combo}</td>`;const td=document.createElement('td');const chk=document.createElement('input');chk.type='checkbox';chk.checked=!!(it.reconciled&&it.reconciled[period]);chk.onchange=()=>{it.reconciled=it.reconciled||{};if(chk.checked)it.reconciled[period]=true;else delete it.reconciled[period];save();renderItems();renderReclass();};td.appendChild(chk);tr.appendChild(td);tb.appendChild(tr)});t.appendChild(tb);host.innerHTML='';host.appendChild(t)}
+
+function renderPeriods(){const tb=el('period-table')?.querySelector('tbody');if(!tb)return;tb.innerHTML='';periods.forEach((p,i)=>{const tr=document.createElement('tr');const td0=document.createElement('td');const in0=document.createElement('input');in0.type='month';in0.value=p.period||'';in0.oninput=()=>{p.period=in0.value;save();};td0.appendChild(in0);tr.appendChild(td0);const td1=document.createElement('td');const in1=document.createElement('input');in1.type='date';in1.value=p.begin||'';in1.oninput=()=>{p.begin=in1.value;save();};td1.appendChild(in1);tr.appendChild(td1);const td2=document.createElement('td');const in2=document.createElement('input');in2.type='date';in2.value=p.end||'';in2.oninput=()=>{p.end=in2.value;save();};td2.appendChild(in2);tr.appendChild(td2);const td3=document.createElement('td');const btn=document.createElement('button');btn.className='ghost';btn.textContent='✖';btn.onclick=()=>{periods.splice(i,1);save();renderPeriods();};td3.appendChild(btn);tr.appendChild(td3);tb.appendChild(tr);})}
 
 function apModuleTotal(){return groups.reduce((a,g)=>a+(g.amount||0),0)}
 function apNetTB(){if(!summaryTB.length)return 0;const rows=summaryTB.filter(r=>{const mod=(r["modsrc"]??r["Modsrc"]??r["MODSRC"]??"").toString().toUpperCase();const j=(r["jnlsrc"]??r["Jnlsrc"]??r["JNLSRC"]??"").toString().toUpperCase();return mod.includes("AP")&&j.includes("BCHCLS")});const dKey=Object.keys(summaryTB[0]||{}).find(k=>k.toLowerCase().includes("debit"));const cKey=Object.keys(summaryTB[0]||{}).find(k=>k.toLowerCase().includes("credit"));return round2(rows.reduce((a,r)=>a+(Number(dKey?r[dKey]:0)||0)-(Number(cKey?r[cKey]:0)||0),0))}
@@ -250,15 +270,19 @@ function buildAcctIndex(){
   acctMap=new Map();acctList=[];
   if(!acctSheet||!wbSheets[acctSheet]?.length){setText("acct-stats","0 accounts loaded");return}
   const rows=wbSheets[acctSheet];
+  const activeCol=acctCols.active||"";
+  let total=0,activeCount=0;
   rows.forEach(r=>{
     const a=String(r[acctCols.seg2]??"").trim(),b=String(r[acctCols.seg3]??"").trim(),c=String(r[acctCols.seg4]??"").trim();
     const desc=String(r[acctCols.desc]??"").trim();
-    const activeCol=acctCols.active||"";
-    const active=activeCol? String(r[activeCol]??"").toUpperCase()!=="N":true;
-    if(a||b||c){acctMap.set(`${a}-${b}-${c}`,desc+(active?"":" (inactive)"));acctList.push({key:`${a}-${b}-${c}`,desc})}
+    const isActive=activeCol? String(r[activeCol]??"").toUpperCase()!=="N":true;
+    if(a||b||c){
+      total++;
+      if(isActive){acctMap.set(`${a}-${b}-${c}`,desc);acctList.push({key:`${a}-${b}-${c}`,desc});activeCount++}
+    }
   });
   acctList=sortAcctKeysNumerically(acctList);
-  setText("acct-stats",`${acctMap.size} accounts loaded`);
+  setText("acct-stats",activeCol?`${activeCount} active of ${total} accounts loaded`:`${acctMap.size} accounts loaded`);
   buildActivitySelect();
 }
 
@@ -296,28 +320,53 @@ function loadWorkbook(file){
   reader.readAsArrayBuffer(file);
 }
 
-function buildActivitySelect(){const sel=el("act-select");sel.innerHTML="";acctList.slice(0,4000).forEach(a=>{const o=document.createElement("option");o.value=a.key;o.textContent=`${a.key} — ${a.desc}`;sel.appendChild(o)})}
+
+function buildActivitySelect(){
+  const sel=el("act-select");sel.innerHTML="";
+  const selected=parseCombos(el("act-search").value);
+  acctList.slice(0,4000).forEach(a=>{
+    const o=document.createElement("option");
+    o.value=a.key;o.textContent=`${a.key} — ${a.desc}`;
+    o.selected=selected.includes(a.key);
+    sel.appendChild(o);
+  });
+}
 
 function renderActivity(){
   const ref=el("act-period").value||toISO(new Date());
-  const combo=(el("act-search").value||el("act-select").value||"").trim();
-  const sum=el("act-summary");const host=el("act-table");sum.innerHTML="";host.innerHTML="";
-  if(!combo){sum.innerHTML='<span class="small">Enter or select an account combo.</span>';return}
-  const calc=actCalcForCombo(combo,ref);const tb=actTBForCombo(combo,ref);const months=calc.months;
+  const sel=el("act-select");
+  let combos=parseCombos(el("act-search").value);
+  if(!combos.length) combos=Array.from(sel.selectedOptions).map(o=>o.value);
+  combos=[...new Set(combos)];
+  Array.from(sel.options).forEach(o=>o.selected=combos.includes(o.value));
+  el("act-search").value=combos.join(", ");
+  const sum=el("act-summary"),host=el("act-table");sum.innerHTML="";host.innerHTML="";
+  if(!combos.length){sum.innerHTML='<span class="small">Enter or select an account combo.</span>';return}
+  const months=actMonths(ref);
+  const calcMap=Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}]));
+  const tbMap=detailTB.length?Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}])):null;
+  combos.forEach(c=>{
+    const calc=actCalcForCombo(c,ref);months.forEach(m=>{const k=monthKey(m);calcMap[k].dr+=calc.map[k].dr;calcMap[k].cr+=calc.map[k].cr});
+    if(tbMap){const tb=actTBForCombo(c,ref);if(tb)months.forEach(m=>{const k=monthKey(m);tbMap[k].dr+=tb.map[k].dr;tbMap[k].cr+=tb.map[k].cr})}
+  });
   const hdr=`<tr><th>Row</th>${months.map(m=>`<th class="num">${m.toLocaleString(undefined,{month:"short"})} Dr</th><th class="num">${m.toLocaleString(undefined,{month:"short"})} Cr</th>`).join("")}<th class="num">Total Dr</th><th class="num">Total Cr</th></tr>`;
   const rowFrom=(label,mp)=>`<tr><td>${label}</td>${months.map(m=>{const k=monthKey(m);const v=mp[k]||{dr:0,cr:0};return `<td class="num">${fmtUSD.format(v.dr)}</td><td class="num">${fmtUSD.format(v.cr)}</td>`}).join("")}<td class="num">${fmtUSD.format(months.reduce((a,m)=>a+(mp[monthKey(m)]?.dr||0),0))}</td><td class="num">${fmtUSD.format(months.reduce((a,m)=>a+(mp[monthKey(m)]?.cr||0),0))}</td></tr>`;
-  const t=document.createElement("table");t.innerHTML=`<thead>${hdr}</thead><tbody>${rowFrom("Calculated",calc.map)}${tb?rowFrom("TB",tb.map):""}</tbody>`;host.appendChild(t);
-  const desc=acctLookup(...combo.split("-"));sum.innerHTML=`<div class="row"><span class="pill">${combo}</span><span class="small">${desc||""}</span></div>`;
+  const t=document.createElement("table");t.innerHTML=`<thead>${hdr}</thead><tbody>${rowFrom("Calculated",calcMap)}${tbMap?rowFrom("TB",tbMap):""}</tbody>`;host.appendChild(t);
+  sum.innerHTML=combos.map(c=>{const desc=acctLookup(...c.split("-"));return `<div class=\"row\"><span class=\"pill\">${c}</span><span class=\"small\">${desc||""}</span></div>`}).join("");
 }
+
 function actMonths(ref){const arr=[];const base=ref?new Date(ref):new Date();for(let i=0;i<12;i++){const d=new Date(base.getFullYear(),base.getMonth()-11+i,1);arr.push(new Date(d.getFullYear(),d.getMonth(),1))}return arr}
 function monthKey(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")}
-function actCalcForCombo(combo,refDate){const months=actMonths(refDate);const map=Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}]));items.forEach(it=>{(it.schedule||[]).forEach(r=>{const d=new Date(r.date);const k=monthKey(new Date(d.getFullYear(),d.getMonth(),1));if(!map[k])return;if(r.debitCombo===combo) map[k].dr+=Number(r.amount)||0;if(r.creditCombo===combo) map[k].cr+=Number(r.amount)||0})});reclassItems.forEach(j=>{const k=monthKey(new Date(refDate||new Date()));if(j.toSeg2+"-"+j.toSeg3+"-"+j.toSeg4===combo) map[k].dr+=Number(j.amount)||0;if(j.fromSeg2+"-"+j.fromSeg3+"-"+j.fromSeg4===combo) map[k].cr+=Number(j.amount)||0});return {months,map}}
-function actTBForCombo(combo,refDate){if(!detailTB.length)return null;const seg2k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg2")||k.toLowerCase().includes("segnumtwo"));const seg3k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg3")||k.toLowerCase().includes("segnumthr"));const seg4k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg4")||k.toLowerCase().includes("segnumfou"));const datek=Object.keys(detailTB[0]).find(k=>/date|trndat|trandat|posting/i.test(k));const debitk=Object.keys(detailTB[0]).find(k=>/debit|debitamt|debamt/i.test(k));const creditk=Object.keys(detailTB[0]).find(k=>/credit|crdamt|cramt/i.test(k));if(!seg2k||!seg3k||!seg4k||!datek||!(debitk||creditk))return null;const months=actMonths(refDate);const map=Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}]));detailTB.forEach(r=>{const k=[r[seg2k],r[seg3k],r[seg4k]].map(x=>String(x||"")).join("-");if(k!==combo)return;const d=parseDate(r[datek]);if(!d)return;const mk=monthKey(new Date(d.getFullYear(),d.getMonth(),1));if(!map[mk])return;const dr=Number((debitk&&r[debitk])||0)||0;const cr=Number((creditk&&r[creditk])||0)||0;map[mk].dr+=dr;map[mk].cr+=cr});return {months,map}}
+function actCalcForCombo(combo,refDate){const combos=Array.isArray(combo)?combo:[combo];const set=new Set(combos);const months=actMonths(refDate);const map=Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}]));items.forEach(it=>{(it.schedule||[]).forEach(r=>{const d=new Date(r.date);const k=monthKey(new Date(d.getFullYear(),d.getMonth(),1));if(!map[k])return;if(set.has(r.debitCombo)) map[k].dr+=Number(r.amount)||0;if(set.has(r.creditCombo)) map[k].cr+=Number(r.amount)||0})});reclassItems.forEach(j=>{const k=monthKey(new Date(refDate||new Date()));if(set.has(j.toSeg2+"-"+j.toSeg3+"-"+j.toSeg4)) map[k].dr+=Number(j.amount)||0;if(set.has(j.fromSeg2+"-"+j.fromSeg3+"-"+j.fromSeg4)) map[k].cr+=Number(j.amount)||0});return {months,map}}
+function actTBForCombo(combo,refDate){if(!detailTB.length)return null;const seg2k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg2")||k.toLowerCase().includes("segnumtwo"));const seg3k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg3")||k.toLowerCase().includes("segnumthr"));const seg4k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg4")||k.toLowerCase().includes("segnumfou"));const datek=Object.keys(detailTB[0]).find(k=>/date|trndat|trandat|posting/i.test(k));const debitk=Object.keys(detailTB[0]).find(k=>/debit|debitamt|debamt/i.test(k));const creditk=Object.keys(detailTB[0]).find(k=>/credit|crdamt|cramt/i.test(k));if(!seg2k||!seg3k||!seg4k||!datek||!(debitk||creditk))return null;const combos=Array.isArray(combo)?combo:[combo];const set=new Set(combos);const months=actMonths(refDate);const map=Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}]));detailTB.forEach(r=>{const k=[r[seg2k],r[seg3k],r[seg4k]].map(x=>String(x||"")).join("-");if(!set.has(k))return;const d=parseDate(r[datek]);if(!d)return;const mk=monthKey(new Date(d.getFullYear(),d.getMonth(),1));if(!map[mk])return;const dr=Number((debitk&&r[debitk])||0)||0;const cr=Number((creditk&&r[creditk])||0)||0;map[mk].dr+=dr;map[mk].cr+=cr});return {months,map}}
 
-function buildActivityDefaults(){el("act-period").value=periodEnd||toISO(new Date());buildActivitySelect();renderActivity()}
 
-function handleImportSchedule(f){const r=new FileReader();r.onload=e=>{const rows=String(e.target.result).split(/\r?\n/).map(l=>l.split(/,|\t/));const hdr=rows.shift().map(x=>x.trim().toLowerCase());const idx=(n)=>hdr.indexOf(n);rows.forEach(c=>{if(!c.length)return;const o={date:c[idx("date")],amount:Number(c[idx("amount")]||0),debitCombo:`${c[idx("debitseg2")]||""}-${c[idx("debitseg3")]||""}-${c[idx("debitseg4")]||""}`,creditCombo:`${c[idx("creditseg2")]||""}-${c[idx("creditseg3")]||""}-${c[idx("creditseg4")]||""}`,memo:c[idx("memo")]||""};items.push({id:uid(),source:{type:"Import",vendor:"Imported",invoiceNumber:"",amount:o.amount,invoiceDate:parseDate(o.date)||new Date(),description:o.memo,seg2:o.creditCombo.split("-")[0],seg3:o.creditCombo.split("-")[1],seg4:o.creditCombo.split("-")[2],lines:[]},amort:{enabled:false,method:"straight",months:1,startDate:parseDate(o.date)||new Date(),postOn:"EOM",expSeg2:o.debitCombo.split("-")[0],expSeg3:o.debitCombo.split("-")[1],expSeg4:o.debitCombo.split("-")[2],memoTemplate:o.memo},asset:{seg2:o.creditCombo.split("-")[0],seg3:o.creditCombo.split("-")[1],seg4:o.creditCombo.split("-")[2]},schedule:[{date:parseDate(o.date)||new Date(),amount:o.amount,debitCombo:o.debitCombo,creditCombo:o.creditCombo,memo:o.memo}]})});save();renderItems();renderActivity()};r.readAsText(f)}
-function handleImportJE(f){const r=new FileReader();r.onload=e=>{const rows=String(e.target.result).split(/\r?\n/).map(l=>l.split(/\t|,/));const hdr=rows.shift().map(x=>x.trim().toLowerCase());const g=(n)=>hdr.indexOf(n);rows.forEach(c=>{if(c.length<13)return;const deb=Number(c[g("debamt")]||0)||0;const crd=Number(c[g("crdamt")]||0)||0;const s2=c[g("segnumt")]||c[g("segnumt")];const s3=c[g("segnumt")]||c[g("segnumt")];const s4=c[g("segnumf")]||c[g("segnumf")];const memo=c[g("lngdsc")]||"";if(deb>0){reclassItems.push({id:uid(),vendor:"Imported JE",invoiceNumber:"",amount:deb,fromSeg2:"",fromSeg3:"",fromSeg4:"",toSeg2:s2,toSeg3:s3,toSeg4:s4,memo})}if(crd>0){reclassItems.push({id:uid(),vendor:"Imported JE",invoiceNumber:"",amount:crd,fromSeg2:s2,fromSeg3:s3,fromSeg4:s4,toSeg2:"",toSeg3:"",toSeg4:"",memo})}});save();renderReclass();renderActivity()};r.readAsText(f)}
+function buildActivityDefaults(){el("act-period").value=periodEnd||toISO(new Date());buildGroupFilter();buildActivitySelect();renderActivity()}
+
+
+function handleImportSchedule(f){const r=new FileReader();r.onload=e=>{const rows=String(e.target.result).split(/\r?\n/).map(l=>l.split(/,|\t/));const hdr=rows.shift().map(x=>x.trim().toLowerCase());rows.forEach(c=>{if(!c.length)return;const val=n=>{const i=hdr.indexOf(n);return i>=0?c[i]:""};const o={date:val("date"),amount:Number(val("amount")||0),debitCombo:`${val("debitseg2")||""}-${val("debitseg3")||""}-${val("debitseg4")||""}`,creditCombo:`${val("creditseg2")||""}-${val("creditseg3")||""}-${val("creditseg4")||""}`,memo:val("memo"),comment:val("comment"),createdBy:val("createdby"),createdAt:val("createdat")};const createdAt=parseDate(o.createdAt)||new Date();items.push({id:uid(),comment:o.comment||"",createdBy:o.createdBy||"",createdAt,source:{type:"Import",vendor:"Imported",invoiceNumber:"",amount:o.amount,invoiceDate:parseDate(o.date)||new Date(),description:o.memo,seg2:o.creditCombo.split("-")[0],seg3:o.creditCombo.split("-")[1],seg4:o.creditCombo.split("-")[2],lines:[]},amort:{enabled:false,method:"straight",months:1,startDate:parseDate(o.date)||new Date(),postOn:"EOM",expSeg2:o.debitCombo.split("-")[0],expSeg3:o.debitCombo.split("-")[1],expSeg4:o.debitCombo.split("-")[2],memoTemplate:o.memo},asset:{seg2:o.creditCombo.split("-")[0],seg3:o.creditCombo.split("-")[1],seg4:o.creditCombo.split("-")[2]},schedule:[{date:parseDate(o.date)||new Date(),amount:o.amount,debitCombo:o.debitCombo,creditCombo:o.creditCombo,memo:o.memo,comment:o.comment||"",createdBy:o.createdBy||"",createdAt}]})});save();renderItems();renderActivity()};r.readAsText(f)}
+function handleImportJE(f){const r=new FileReader();r.onload=e=>{const rows=String(e.target.result).split(/\r?\n/).map(l=>l.split(/\t|,/));const hdr=rows.shift().map(x=>x.trim().toLowerCase());rows.forEach(c=>{if(c.length<13)return;const val=n=>{const i=hdr.indexOf(n);return i>=0?c[i]:""};const deb=Number(val("debamt")||0)||0;const crd=Number(val("crdamt")||0)||0;const s2=val("segnumt")||val("segnumt");const s3=val("segnumt")||val("segnumt");const s4=val("segnumf")||val("segnumf");const memo=val("lngdsc")||"";const comment=val("comment");const createdBy=val("createdby");const createdAt=parseDate(val("createdat"))||new Date();if(deb>0){reclassItems.push({id:uid(),vendor:"Imported JE",invoiceNumber:"",amount:deb,fromSeg2:"",fromSeg3:"",fromSeg4:"",toSeg2:s2,toSeg3:s3,toSeg4:s4,memo,comment:comment||"",createdBy:createdBy||"",createdAt})}if(crd>0){reclassItems.push({id:uid(),vendor:"Imported JE",invoiceNumber:"",amount:crd,fromSeg2:s2,fromSeg3:s3,fromSeg4:s4,toSeg2:"",toSeg3:"",toSeg4:"",memo,comment:comment||"",createdBy:createdBy||"",createdAt})}});save();renderReclass();renderActivity()};r.readAsText(f)}
+
 
 /* Tabs & events */
 el("dlg-close").onclick=()=>{el("dlg").style.display="none";detailGroup=null};
@@ -325,22 +374,31 @@ el("file").addEventListener("change",(e)=>{const f=e.target.files?.[0];if(f)load
 el("chk-all").addEventListener("change",(e)=>{const c=e.currentTarget.checked;groups.forEach(g=>{actionsByKey[g.key]={...(actionsByKey[g.key]||{}),amortize:c}});renderGroups()});
 el("add-to-amort").addEventListener("click",addSelectedToAmort);
 el("add-to-reclass").addEventListener("click",addSelectedToReclass);
-el("rebuild-all").addEventListener("click",()=>{items=items.map(it=>({...it,schedule:buildSchedule(it)}));save();renderItems()});
+el("rebuild-all").addEventListener("click",()=>{items=items.map(it=>({...it,schedule:buildSchedule(it),_schedParams:scheduleParams(it)}));save();renderItems()});
 el("clear-items").addEventListener("click",()=>{items=[];save();renderItems()});
 el("export").addEventListener("click",exportTXT);
 ["periodEnd","fiscalYY","actualMM","seqStart","jnlTitle"].forEach(id=>el(id).addEventListener("input",e=>{if(id==="periodEnd")periodEnd=e.target.value;if(id==="fiscalYY")fiscalYY=e.target.value.replace(/[^0-9]/g,"").slice(-2);if(id==="actualMM")actualMM=e.target.value.replace(/[^0-9]/g,"").slice(-2);if(id==="seqStart")seqStart=(e.target.value.replace(/[^0-9]/g,"").slice(-2)||"01");if(id==="jnlTitle")journalTitle=e.target.value;el(id).value=(id==="seqStart"?seqStart:(id==="fiscalYY"?fiscalYY:(id==="actualMM"?actualMM:e.target.value)));save()}));
 
-el("acct-sheet").addEventListener("change",e=>{acctSheet=e.target.value;const cols=filterUsableCols(Object.keys((wbSheets[acctSheet]||[{}])[0]||{}));["acct-seg2","acct-seg3","acct-seg4","acct-desc","acct-active"].forEach((id,i)=>fillSelectOptions(el(id),cols,acctCols[["seg2","seg3","seg4","desc","active"][i]]||""))});
-["acct-seg2","acct-seg3","acct-seg4","acct-desc","acct-active"].forEach((id,i)=>el(id).addEventListener("change",e=>{acctCols[["seg2","seg3","seg4","desc","active"][i]]=e.target.value;save()}));
+el("acct-sheet").addEventListener("change",e=>{acctSheet=e.target.value;const cols=filterUsableCols(Object.keys((wbSheets[acctSheet]||[{}])[0]||{}));["acct-seg2","acct-seg3","acct-seg4","acct-desc","acct-active"].forEach((id,i)=>fillSelectOptions(el(id),cols,acctCols[["seg2","seg3","seg4","desc","active"][i]]||""));buildAcctIndex();save()});
+["acct-seg2","acct-seg3","acct-seg4","acct-desc","acct-active"].forEach((id,i)=>el(id).addEventListener("change",e=>{acctCols[["seg2","seg3","seg4","desc","active"][i]]=e.target.value;buildAcctIndex();save()}));
 el("acct-build").addEventListener("click",()=>{buildAcctIndex();save()});
+
 
 el("tab-amort").onclick=()=>setMode("amort");
 el("tab-activity").onclick=()=>{setMode("activity");buildActivityDefaults()};
 el("tab-settings").onclick=()=>{setMode("settings");renderSettings()};
 el("act-refresh").onclick=renderActivity;
-el("act-select").addEventListener("change",()=>{el("act-search").value=el("act-select").value;renderActivity()});
+
+el("act-select").addEventListener("change",()=>{
+  const sel=el("act-select");
+  const vals=Array.from(sel.selectedOptions).map(o=>o.value);
+  el("act-search").value=vals.join(", ");
+  renderActivity();
+});
+
 el("act-search").addEventListener("input",renderActivity);
 el("act-period").addEventListener("input",renderActivity);
+
 
 el("imp-sched").addEventListener("change",e=>{const f=e.target.files?.[0];if(f)handleImportSchedule(f)});
 el("imp-je").addEventListener("change",e=>{const f=e.target.files?.[0];if(f)handleImportJE(f)});
@@ -348,22 +406,48 @@ el("imp-je").addEventListener("change",e=>{const f=e.target.files?.[0];if(f)hand
 // Sample template downloads
 el("dl-sched").addEventListener("click",()=>downloadBlob(
   "schedule_template.csv",
-  "date,amount,debitSeg2,debitSeg3,debitSeg4,creditSeg2,creditSeg3,creditSeg4,memo\n" +
-  "2025-07-31,1250,61500,000,01,11415,000,02,Amortization July 2025\n"
+  "date,amount,debitSeg2,debitSeg3,debitSeg4,creditSeg2,creditSeg3,creditSeg4,memo,comment,createdBy,createdAt\n" +
+  "2025-07-31,1250,61500,000,01,11415,000,02,Amortization July 2025,Optional note,Jane Doe,2025-07-15\n"
 ));
 el("dl-je").addEventListener("click",()=>downloadBlob(
   "je_template.txt",
-  "Trndat\tJnlsrc\tJnlidn\tJnldsc\tModsrc\tCo_num\tSegnumT\tSegnumT\tSegnumF\tSegnumF\tDebAmt\tCrdAmt\tlngdsc\n" +
-  "2025-07-31\tGL\t250701\tSample JE\tGL\t01\t15060\t000\t02\t\t1000\t0\tSample debit line\n" +
-  "2025-07-31\tGL\t250701\tSample JE\tGL\t01\t11415\t000\t02\t\t0\t1000\tSample credit line\n"
+  "Trndat\tJnlsrc\tJnlidn\tJnldsc\tModsrc\tCo_num\tSegnumT\tSegnumT\tSegnumF\tSegnumF\tDebAmt\tCrdAmt\tlngdsc\tcomment\tcreatedBy\tcreatedAt\n" +
+  "2025-07-31\tGL\t250701\tSample JE\tGL\t01\t15060\t000\t02\t\t1000\t0\tSample debit line\tOptional note\tJane Doe\t2025-07-15\n" +
+  "2025-07-31\tGL\t250701\tSample JE\tGL\t01\t11415\t000\t02\t\t0\t1000\tSample credit line\tOptional note\tJane Doe\t2025-07-15\n"
 ));
 
+
 /* Settings */
+function renderGroupTable(){
+  const tbody=el("grp-rows");
+  tbody.innerHTML="";
+  (defaults.groups||[]).forEach((g,i)=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td><input data-idx="${i}" data-k="group" type="text" value="${g.group||""}"></td>`+
+    `<td><input data-idx="${i}" data-k="seg2" type="text" value="${g.seg2||""}"></td>`+
+    `<td><input data-idx="${i}" data-k="seg3" type="text" value="${g.seg3||""}"></td>`+
+    `<td><input data-idx="${i}" data-k="seg4" type="text" value="${g.seg4||""}"></td>`+
+    `<td><button data-idx="${i}" class="grp-del">✖</button></td>`;
+    tbody.appendChild(tr);
+  });
+  tbody.querySelectorAll("input").forEach(inp=>{
+    inp.addEventListener("input",e=>{
+      const {idx,k}=e.target.dataset;defaults.groups[idx][k]=e.target.value.trim();
+    });
+  });
+  tbody.querySelectorAll(".grp-del").forEach(btn=>{
+    btn.addEventListener("click",e=>{const {idx}=e.target.dataset;defaults.groups.splice(idx,1);renderGroupTable()});
+  });
+}
+
+
 function renderSettings(){
   el("set-fyy").value=defaults.fyy||fiscalYY||"";
   el("set-amm").value=defaults.amm||actualMM||"";
   el("set-amemo").value=defaults.amemo||"";
   el("set-jnltitle").value=defaults.jnltitle||journalTitle||"";
+
+  renderGroupTable();
 }
 el("set-save").onclick=()=>{
   defaults.fyy=el("set-fyy").value.replace(/[^0-9]/g,"").slice(-2);
@@ -373,7 +457,11 @@ el("set-save").onclick=()=>{
   if(!fiscalYY)fiscalYY=defaults.fyy; if(!actualMM)actualMM=defaults.amm; if(!journalTitle)journalTitle=defaults.jnltitle;
   el("fiscalYY").value=fiscalYY; el("actualMM").value=actualMM; el("jnlTitle").value=journalTitle;
   save();
+  buildGroupFilter();buildActivitySelect();
 };
+el("grp-add").onclick=()=>{defaults.groups.push({group:"",seg2:"",seg3:"",seg4:""});renderGroupTable()};
+=======
+
 
 el("edit-user").onclick=openProfile;el("force-login").onclick=openProfile;el("u-save").onclick=()=>{applyProfile();el("login").style.display="none"};
 
@@ -382,5 +470,7 @@ loadMasterFile();
 if(defaults.fyy&&!fiscalYY)fiscalYY=defaults.fyy;
 if(defaults.amm&&!actualMM)actualMM=defaults.amm;
 if(defaults.jnltitle&&!journalTitle)journalTitle=defaults.jnltitle;
+if(!periodEnd&&closingPeriod)periodEnd=closingPeriodEnd();
+el("recon-period").value=closingPeriod||"";
 if(periodEnd)el("periodEnd").value=periodEnd;if(fiscalYY)el("fiscalYY").value=fiscalYY;if(actualMM)el("actualMM").value=actualMM;if(seqStart)el("seqStart").value=seqStart;if(journalTitle)el("jnlTitle").value=journalTitle;
 renderItems();renderReclass();

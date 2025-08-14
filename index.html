@@ -59,6 +59,7 @@
       <div class="tabs">
         <button id="tab-amort" class="active">Amortization Builder</button>
         <button id="tab-activity">Account Activity & Schedules</button>
+        <button id="tab-recon">Reconciliation</button>
         <button id="tab-settings">Settings</button>
       </div>
       <div class="row">
@@ -191,9 +192,11 @@
       <div class="card">
         <h2>Activity Browser & Amortization Schedule</h2>
         <div class="content">
+
           <div class="grid3">
-            <div><label>Account Combo</label><input id="act-search" type="text" placeholder="11415-000-02"/></div>
-            <div><label>Select From GL Accounts</label><select id="act-select"></select></div>
+            <div><label>Account Combo</label><input id="act-search" type="text" placeholder="11415-000-02,11415-000-03"/></div>
+            <div><label>Select From GL Accounts</label><select id="act-select" multiple></select></div>
+
             <div><label>Reference Period End</label><input id="act-period" type="date"/></div>
           </div>
           <div class="row" style="margin-top:8px"><button id="act-refresh">Refresh</button></div>
@@ -208,15 +211,25 @@
           <div>
             <label>Import Schedule CSV</label>
             <input id="imp-sched" type="file" accept=".csv"/>
-            <div class="small">Columns: date,amount,debitSeg2,debitSeg3,debitSeg4,creditSeg2,creditSeg3,creditSeg4,memo</div>
+            <div class="small">Columns: date,amount,debitSeg2,debitSeg3,debitSeg4,creditSeg2,creditSeg3,creditSeg4,memo,comment,createdBy,createdAt</div>
             <div class="row" style="margin-top:6px"><button id="dl-sched" class="secondary">Download Schedule CSV template</button></div>
           </div>
           <div>
             <label>Import JE CSV/TXT</label>
             <input id="imp-je" type="file" accept=".csv,.txt"/>
-            <div class="small">Columns (tab/CSV): Trndat,Jnlsrc,Jnlidn,Jnldsc,Modsrc,Co_num,SegnumT,SegnumT,SegnumF,SegnumF,DebAmt,CrdAmt,lngdsc</div>
+            <div class="small">Columns (tab/CSV): Trndat,Jnlsrc,Jnlidn,Jnldsc,Modsrc,Co_num,SegnumT,SegnumT,SegnumF,SegnumF,DebAmt,CrdAmt,lngdsc,comment,createdBy,createdAt</div>
             <div class="row" style="margin-top:6px"><button id="dl-je" class="secondary">Download JE TXT template</button></div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="recon-view" style="display:none">
+      <div class="card">
+        <h2>Reconciliation</h2>
+        <div class="content">
+          <div class="row"><div><label>Period</label><input id="recon-period" type="month"/></div></div>
+          <div id="recon-table" class="scroll" style="margin-top:8px"></div>
         </div>
       </div>
     </div>
@@ -226,9 +239,18 @@
         <h2>Settings</h2>
         <div class="content grid3">
           <div><label>Default Fiscal Year (YY)</label><input id="set-fyy" type="text" maxlength="2"/></div>
+
           <div><label>Default Actual Month (MM)</label><input id="set-amm" type="text" maxlength="2"/></div>
           <div style="grid-column:1/-1"><label>Default Amort Memo Template</label><input id="set-amemo" type="text" placeholder="{{vendor}} {{invnum}} amortization ({{start}}–{{end}})"/></div>
           <div style="grid-column:1/-1"><label>Default Journal Title</label><input id="set-jnltitle" type="text" placeholder="Standard Amortization Entry"/></div>
+          <div style="grid-column:1/-1;margin-top:12px">
+            <label>Account Groups</label>
+            <table id="grp-table">
+              <thead><tr><th>Group</th><th>Seg2</th><th>Seg3</th><th>Seg4</th><th></th></tr></thead>
+              <tbody id="grp-rows"></tbody>
+            </table>
+            <div class="row" style="margin-top:6px"><button id="grp-add" class="secondary">Add Row</button></div>
+          </div>
           <div class="row" style="grid-column:1/-1;margin-top:6px">
             <button id="set-save">Save</button>
             <span class="small">These defaults prefill Export and new amortizations.</span>
@@ -237,6 +259,8 @@
       </div>
     </div>
   </div>
+
+
 
   <div id="dlg" class="dialog-backdrop">
     <div class="dialog">
