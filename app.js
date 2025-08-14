@@ -56,6 +56,7 @@ function openDetail(g){detailGroup=g;el("dlg-title").textContent=`Invoice ${g.in
 function renderSelectedTotal(){const total=groups.filter(g=>actionsByKey[g.key]?.amortize).reduce((a,b)=>a+(b.amount||0),0);setText("sel-total",fmtUSD.format(total))}
 function updateActionButtons(){const anyAm=groups.some(g=>actionsByKey[g.key]?.amortize);const anyRc=groups.some(g=>actionsByKey[g.key]?.reclass);el("add-to-amort").disabled=!anyAm;el("add-to-reclass").disabled=!anyRc}
 
+
 function addSelectedToAmort(){const picks=groups.filter(g=>actionsByKey[g.key]?.amortize);const newItems=picks.map(g=>({id:uid(),source:{type:"AP",vendor:g.vendor,invoiceNumber:g.invoiceNumber,amount:g.amount,invoiceDate:g.date||new Date(),description:g.rows[0]?.description||"",seg2:g.rows[0]?.seg2||"",seg3:g.rows[0]?.seg3||"",seg4:g.rows[0]?.seg4||"",lines:g.rows},amort:{enabled:true,method:"straight",months:12,startDate:g.date||new Date(),postOn:"EOM",expSeg2:"",expSeg3:"",expSeg4:"",memoTemplate:defaults.amemo},asset:{seg2:g.rows[0]?.seg2||"",seg3:g.rows[0]?.seg3||"",seg4:g.rows[0]?.seg4||""},schedule:[]}));items=items.concat(newItems);save();renderItems()}
 function addSelectedToReclass(){const picks=groups.filter(g=>actionsByKey[g.key]?.reclass);const newItems=picks.map(g=>({id:uid(),vendor:g.vendor,invoiceNumber:g.invoiceNumber,amount:g.amount,fromSeg2:g.rows[0]?.seg2||"",fromSeg3:g.rows[0]?.seg3||"",fromSeg4:g.rows[0]?.seg4||"",toSeg2:"",toSeg3:"",toSeg4:"",memo:`Reclass ${g.vendor||""} ${g.invoiceNumber||""}`}));reclassItems=reclassItems.concat(newItems);save();renderReclass()}
 
@@ -63,7 +64,8 @@ function buildSchedule(it){const src=it.source,a=it.amort;if(!a.enabled||!a.mont
 
 function acctKey(a,b,c){return `${String(a||"")}-${String(b||"")}-${String(c||"")}`}
 function acctLookup(a,b,c){return acctMap.get(acctKey(a,b,c))||null}
-function parseCombos(str){return (str||"").split(",").map(s=>s.trim()).filter(Boolean)}
+
+function scheduleParams(it){return JSON.stringify({amount:it.source.amount,months:it.amort.months,start:toISO(it.amort.startDate),postOn:it.amort.postOn,method:it.amort.method,expSeg2:it.amort.expSeg2,expSeg3:it.amort.expSeg3,expSeg4:it.amort.expSeg4,assetSeg2:it.asset.seg2,assetSeg3:it.asset.seg3,assetSeg4:it.asset.seg4,memoTemplate:it.amort.memoTemplate})}
 
 function renderItems(){
   const host=el("items");host.innerHTML="";
@@ -72,43 +74,44 @@ function renderItems(){
 
   items.forEach(it=>{
     const card=document.createElement("div");card.className="card";
-    const locked=Object.keys(it.reconciled||{}).some(p=>p<=closingPeriod);
-    const h2=document.createElement("h2");h2.style.display="flex";h2.style.justifyContent="space-between";h2.style.alignItems="center";h2.innerHTML=`<span>${it.source.vendor} — ${it.source.invoiceNumber}</span>`;
-    const rm=document.createElement("button");rm.className="ghost";rm.textContent="Remove";rm.onclick=()=>{if(locked){alert("Transaction is reconciled and cannot be edited");return;}items=items.filter(x=>x.id!==it.id);save();renderItems();};h2.appendChild(rm);card.appendChild(h2);
+    const h2=document.createElement("h2");h2.style.display="flex";h2.style.justifyContent="space-between";h2.style.alignItems="center";
+    const title=document.createElement("span");title.textContent=`${it.source.vendor} — ${it.source.invoiceNumber}`;
+    const badge=document.createElement("span");badge.className="badge-bad";badge.textContent="Needs rebuild";badge.style.marginLeft="8px";title.appendChild(badge);h2.appendChild(title);
+    const btnWrap=document.createElement("span");btnWrap.style.display="flex";btnWrap.style.gap="8px";
+    const edit=document.createElement("button");edit.className="ghost";edit.textContent=it._editing?"Save":"Edit";
+    edit.onclick=()=>{if(it._editing){it._editing=false;it.schedule=buildSchedule(it);it._schedParams=scheduleParams(it);save();renderItems()}else{it._editing=true;renderItems()}};
+    const rm=document.createElement("button");rm.className="ghost";rm.textContent="Remove";rm.onclick=()=>{items=items.filter(x=>x.id!==it.id);save();renderItems()};
+    btnWrap.appendChild(edit);btnWrap.appendChild(rm);h2.appendChild(btnWrap);card.appendChild(h2);
 
     const c=document.createElement("div");c.className="content";
     const meta=document.createElement("div");meta.className="small";meta.style.marginBottom="8px";meta.textContent=`${toISO(it.source.invoiceDate)} · ${fmtUSD.format(it.source.amount)} · ${(it.source.seg2||"")}-${(it.source.seg3||"")}-${(it.source.seg4||"")}`;c.appendChild(meta);
     const grid=document.createElement("div");grid.className="grid3";
 
-    const months=document.createElement("div");months.innerHTML=`<label>Months</label>`;const monthsIn=document.createElement("input");monthsIn.type="number";monthsIn.min=1;monthsIn.value=it.amort.months;monthsIn.oninput=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');monthsIn.value=it.amort.months;return;}it.amort.months=Number(monthsIn.value||0);save();};months.appendChild(monthsIn);grid.appendChild(months);
-    const start=document.createElement("div");start.innerHTML=`<label>Start Date</label>`;const startIn=document.createElement("input");startIn.type="date";startIn.value=toISO(it.amort.startDate);startIn.oninput=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');startIn.value=toISO(it.amort.startDate);return;}it.amort.startDate=new Date(startIn.value);save();};start.appendChild(startIn);grid.appendChild(start);
-    const post=document.createElement("div");post.innerHTML=`<label>Post On</label>`;const postSel=document.createElement("select");postSel.innerHTML=`<option value="EOM">End of Month</option><option value="SameDay">Same Day</option>`;postSel.value=it.amort.postOn;postSel.onchange=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');postSel.value=it.amort.postOn;return;}it.amort.postOn=postSel.value;save();};post.appendChild(postSel);grid.appendChild(post);
-    const method=document.createElement("div");method.innerHTML=`<label>Method</label>`;const methodSel=document.createElement("select");methodSel.innerHTML=`<option value="straight">Straight-line</option><option value="prorata">Prorata</option>`;methodSel.value=it.amort.method;methodSel.onchange=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');methodSel.value=it.amort.method;return;}it.amort.method=methodSel.value;save();};method.appendChild(methodSel);grid.appendChild(method);
+    const months=document.createElement("div");months.innerHTML=`<label>Months</label>`;const monthsIn=document.createElement("input");monthsIn.type="number";monthsIn.min=1;monthsIn.value=it.amort.months;monthsIn.readOnly=!it._editing;monthsIn.oninput=()=>{it.amort.months=Number(monthsIn.value||0);save();updateDirty()};months.appendChild(monthsIn);grid.appendChild(months);
+    const start=document.createElement("div");start.innerHTML=`<label>Start Date</label>`;const startIn=document.createElement("input");startIn.type="date";startIn.value=toISO(it.amort.startDate);startIn.readOnly=!it._editing;startIn.oninput=()=>{it.amort.startDate=new Date(startIn.value);save();updateDirty()};start.appendChild(startIn);grid.appendChild(start);
+    const post=document.createElement("div");post.innerHTML=`<label>Post On</label>`;const postSel=document.createElement("select");postSel.innerHTML=`<option value="EOM">End of Month</option><option value="SameDay">Same Day</option>`;postSel.value=it.amort.postOn;postSel.disabled=!it._editing;postSel.onchange=()=>{it.amort.postOn=postSel.value;save();updateDirty()};post.appendChild(postSel);grid.appendChild(post);
+    const method=document.createElement("div");method.innerHTML=`<label>Method</label>`;const methodSel=document.createElement("select");methodSel.innerHTML=`<option value="straight">Straight-line</option><option value="prorata">Prorata</option>`;methodSel.value=it.amort.method;methodSel.disabled=!it._editing;methodSel.onchange=()=>{it.amort.method=methodSel.value;save();updateDirty()};method.appendChild(methodSel);grid.appendChild(method);
 
-    const exp2=document.createElement("div");exp2.innerHTML=`<label>Expense Account</label>`;const exp2in=document.createElement("input");exp2in.type="text";exp2in.value=it.amort.expSeg2||"";exp2in.oninput=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');exp2in.value=it.amort.expSeg2||'';return;}it.amort.expSeg2=exp2in.value;save();mark();};exp2.appendChild(exp2in);grid.appendChild(exp2);
-    const exp3=document.createElement("div");exp3.innerHTML=`<label>Department</label>`;const exp3in=document.createElement("input");exp3in.type="text";exp3in.value=it.amort.expSeg3||"";exp3in.oninput=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');exp3in.value=it.amort.expSeg3||'';return;}it.amort.expSeg3=exp3in.value;save();mark();};exp3.appendChild(exp3in);grid.appendChild(exp3);
-    const exp4=document.createElement("div");exp4.innerHTML=`<label>Location</label>`;const exp4in=document.createElement("input");exp4in.type="text";exp4in.value=it.amort.expSeg4||"";exp4in.oninput=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');exp4in.value=it.amort.expSeg4||'';return;}it.amort.expSeg4=exp4in.value;save();mark();};exp4.appendChild(exp4in);grid.appendChild(exp4);
+    const exp2=document.createElement("div");exp2.innerHTML=`<label>Expense Account</label>`;const exp2in=document.createElement("input");exp2in.type="text";exp2in.value=it.amort.expSeg2||"";exp2in.readOnly=!it._editing;exp2in.oninput=()=>{it.amort.expSeg2=exp2in.value;save();mark()};exp2.appendChild(exp2in);grid.appendChild(exp2);
+    const exp3=document.createElement("div");exp3.innerHTML=`<label>Department</label>`;const exp3in=document.createElement("input");exp3in.type="text";exp3in.value=it.amort.expSeg3||"";exp3in.readOnly=!it._editing;exp3in.oninput=()=>{it.amort.expSeg3=exp3in.value;save();mark()};exp3.appendChild(exp3in);grid.appendChild(exp3);
+    const exp4=document.createElement("div");exp4.innerHTML=`<label>Location</label>`;const exp4in=document.createElement("input");exp4in.type="text";exp4in.value=it.amort.expSeg4||"";exp4in.readOnly=!it._editing;exp4in.oninput=()=>{it.amort.expSeg4=exp4in.value;save();mark()};exp4.appendChild(exp4in);grid.appendChild(exp4);
 
     const expStatus=document.createElement("div");expStatus.className="status";expStatus.innerHTML=`<span id="expIcon">✖</span><input id="expName" type="text" readonly placeholder="Account name" />`;grid.appendChild(expStatus);
 
     const hr=document.createElement("div");hr.style.gridColumn="1/-1";hr.style.borderTop="1px solid #e5e7eb";hr.style.marginTop="8px";grid.appendChild(hr);
 
-    const as2=document.createElement("div");as2.innerHTML=`<label>Asset Account</label>`;const as2in=document.createElement("input");as2in.type="text";as2in.value=it.asset.seg2||"";as2in.oninput=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');as2in.value=it.asset.seg2||'';return;}it.asset.seg2=as2in.value;save();mark();};as2.appendChild(as2in);grid.appendChild(as2);
-    const as3=document.createElement("div");as3.innerHTML=`<label>Department</label>`;const as3in=document.createElement("input");as3in.type="text";as3in.value=it.asset.seg3||"";as3in.oninput=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');as3in.value=it.asset.seg3||'';return;}it.asset.seg3=as3in.value;save();mark();};as3.appendChild(as3in);grid.appendChild(as3);
-    const as4=document.createElement("div");as4.innerHTML=`<label>Location</label>`;const as4in=document.createElement("input");as4in.type="text";as4in.value=it.asset.seg4||"";as4in.oninput=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');as4in.value=it.asset.seg4||'';return;}it.asset.seg4=as4in.value;save();mark();};as4.appendChild(as4in);grid.appendChild(as4);
+    const as2=document.createElement("div");as2.innerHTML=`<label>Asset Account</label>`;const as2in=document.createElement("input");as2in.type="text";as2in.value=it.asset.seg2||"";as2in.readOnly=!it._editing;as2in.oninput=()=>{it.asset.seg2=as2in.value;save();mark()};as2.appendChild(as2in);grid.appendChild(as2);
+    const as3=document.createElement("div");as3.innerHTML=`<label>Department</label>`;const as3in=document.createElement("input");as3in.type="text";as3in.value=it.asset.seg3||"";as3in.readOnly=!it._editing;as3in.oninput=()=>{it.asset.seg3=as3in.value;save();mark()};as3.appendChild(as3in);grid.appendChild(as3);
+    const as4=document.createElement("div");as4.innerHTML=`<label>Location</label>`;const as4in=document.createElement("input");as4in.type="text";as4in.value=it.asset.seg4||"";as4in.readOnly=!it._editing;as4in.oninput=()=>{it.asset.seg4=as4in.value;save();mark()};as4.appendChild(as4in);grid.appendChild(as4);
 
     const astStatus=document.createElement("div");astStatus.className="status";astStatus.innerHTML=`<span id="astIcon">✖</span><input id="astName" type="text" readonly placeholder="Account name" />`;grid.appendChild(astStatus);
 
-    const memo=document.createElement("div");memo.style.gridColumn="1/-1";memo.innerHTML=`<label>Memo Template</label>`;const memoIn=document.createElement("input");memoIn.type="text";memoIn.value=it.amort.memoTemplate||defaults.amemo;memoIn.oninput=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');memoIn.value=it.amort.memoTemplate||defaults.amemo;return;}it.amort.memoTemplate=memoIn.value;save();};memo.appendChild(memoIn);grid.appendChild(memo);
+    const memo=document.createElement("div");memo.style.gridColumn="1/-1";memo.innerHTML=`<label>Memo Template</label>`;const memoIn=document.createElement("input");memoIn.type="text";memoIn.value=it.amort.memoTemplate||defaults.amemo;memoIn.readOnly=!it._editing;memoIn.oninput=()=>{it.amort.memoTemplate=memoIn.value;save();updateDirty()};memo.appendChild(memoIn);grid.appendChild(memo);
 
-    const btns=document.createElement("div");btns.style.gridColumn="1/-1";
-    const build=document.createElement("button");build.className="secondary";build.textContent="Build Schedule";
-    build.onclick=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');return;}it.schedule=buildSchedule(it);save();renderItems();};
-    const val=document.createElement("button");val.className="secondary";val.style.marginLeft="8px";val.textContent="Validate";
-    val.onclick=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');return;}mark(true);};
-    btns.appendChild(build);btns.appendChild(val);grid.appendChild(btns);
+    c.appendChild(grid);
+    card.appendChild(c);
 
-    const scNote=document.createElement("div");scNote.style.gridColumn="1/-1";c.appendChild(grid);
+    const updateDirty=()=>{const needs=it.amort.enabled&&(scheduleParams(it)!==it._schedParams||!it.schedule?.length);badge.style.display=needs?'inline-block':'none'};
 
     function mark(){
       const exp=acctLookup(it.amort.expSeg2,it.amort.expSeg3,it.amort.expSeg4);
@@ -117,7 +120,7 @@ function renderItems(){
       const astIcon=astStatus.querySelector("#astIcon"), astName=astStatus.querySelector("#astName");
       if(exp){expIcon.textContent="✔";expIcon.className="ok";expName.value=exp}else{expIcon.textContent="✖";expIcon.className="bad";expName.value=""}
       if(ast){astIcon.textContent="✔";astIcon.className="ok";astName.value=ast}else{astIcon.textContent="✖";astIcon.className="bad";astName.value=""}
-      scNote.innerHTML="";
+      updateDirty();
     }
     mark();
 
@@ -134,20 +137,11 @@ function renderItems(){
       tbl.appendChild(tb);sc.appendChild(tbl);c.appendChild(sc);
     }
 
-    card.appendChild(c);
-    if(locked){
-      const ov=document.createElement('div');
-      ov.style.position='absolute';ov.style.inset='0';
-      ov.style.background='rgba(255,255,255,0.6)';
-      ov.style.display='flex';ov.style.alignItems='center';ov.style.justifyContent='center';
-      ov.style.fontWeight='700';ov.textContent='Reconciled';
-      ov.onclick=()=>alert('Transaction is reconciled and cannot be edited');
-      card.style.position='relative';card.appendChild(ov);
-    }
     host.appendChild(card);
+    updateDirty();
   });
-  if(mode==='recon') renderReconciliation();
 }
+
 
 function renderReclass(){const host=el("reclass-items");host.innerHTML="";el("reclass-empty").style.display=reclassItems.length?"none":"block";reclassItems.forEach(it=>{const card=document.createElement("div");card.className="card";const locked=Object.keys(it.reconciled||{}).some(p=>p<=closingPeriod);const h2=document.createElement("h2");h2.style.display="flex";h2.style.justifyContent="space-between";h2.style.alignItems="center";h2.innerHTML=`<span>${it.vendor} — ${it.invoiceNumber}</span>`;const rm=document.createElement("button");rm.className="ghost";rm.textContent="Remove";rm.onclick=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');return;}reclassItems=reclassItems.filter(x=>x.id!==it.id);save();renderReclass()};h2.appendChild(rm);card.appendChild(h2);const c=document.createElement("div");c.className="content";const meta=document.createElement("div");meta.className="small";meta.style.marginBottom="8px";meta.textContent=`From ${(it.fromSeg2||"")}-${(it.fromSeg3||"")}-${(it.fromSeg4||"")} · Amount ${fmtUSD.format(it.amount)}`;c.appendChild(meta);const grid=document.createElement("div");grid.className="grid3";const t2=document.createElement("div");t2.innerHTML=`<label>To Account</label>`;const t2in=document.createElement("input");t2in.type="text";t2in.value=it.toSeg2||"";t2in.oninput=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');t2in.value=it.toSeg2||'';return;}it.toSeg2=t2in.value;save();mark()};t2.appendChild(t2in);grid.appendChild(t2);const t3=document.createElement("div");t3.innerHTML=`<label>Department</label>`;const t3in=document.createElement("input");t3in.type="text";t3in.value=it.toSeg3||"";t3in.oninput=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');t3in.value=it.toSeg3||'';return;}it.toSeg3=t3in.value;save();mark()};t3.appendChild(t3in);grid.appendChild(t3);const t4=document.createElement("div");t4.innerHTML=`<label>Location</label>`;const t4in=document.createElement("input");t4in.type="text";t4in.value=it.toSeg4||"";t4in.oninput=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');t4in.value=it.toSeg4||'';return;}it.toSeg4=t4in.value;save();mark()};t4.appendChild(t4in);grid.appendChild(t4);const memo=document.createElement("div");memo.style.gridColumn="1/-1";memo.innerHTML=`<label>Memo</label>`;const memoIn=document.createElement("input");memoIn.type="text";memoIn.value=it.memo||"";memoIn.oninput=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');memoIn.value=it.memo||'';return;}it.memo=memoIn.value;save()};memo.appendChild(memoIn);grid.appendChild(memo);const note=document.createElement("div");note.style.gridColumn="1/-1";c.appendChild(grid);c.appendChild(note);function mark(){[t2in,t3in,t4in].forEach(x=>x.classList.remove("invalid"));const desc=acctLookup(it.toSeg2,it.toSeg3,it.toSeg4);note.innerHTML=desc?`<div class="valid-note">Target: ${desc}</div>`:(it.toSeg2||it.toSeg3||it.toSeg4)?`<div class="invalid-note">Target combo not found</div>`:""}mark();card.appendChild(c);if(locked){const ov=document.createElement('div');ov.style.position='absolute';ov.style.inset='0';ov.style.background='rgba(255,255,255,0.6)';ov.style.display='flex';ov.style.alignItems='center';ov.style.justifyContent='center';ov.style.fontWeight='700';ov.textContent='Reconciled';ov.onclick=()=>alert('Transaction is reconciled and cannot be edited');card.style.position='relative';card.appendChild(ov);}host.appendChild(card)})}
 
@@ -301,7 +295,7 @@ function actTBForCombo(combo,refDate){if(!detailTB.length)return null;const seg2
 function buildActivityDefaults(){el("act-period").value=periodEnd||toISO(new Date());buildGroupFilter();buildActivitySelect();renderActivity()}
 
 
-function handleImportSchedule(f){const r=new FileReader();r.onload=e=>{const rows=String(e.target.result).split(/\r?\n/).map(l=>l.split(/,|\t/));const hdr=rows.shift().map(x=>x.trim().toLowerCase());const idx=(n)=>hdr.indexOf(n);rows.forEach(c=>{if(!c.length)return;const o={date:c[idx("date")],amount:Number(c[idx("amount")]||0),debitCombo:`${c[idx("debitseg2")]||""}-${c[idx("debitseg3")]||""}-${c[idx("debitseg4")]||""}`,creditCombo:`${c[idx("creditseg2")]||""}-${c[idx("creditseg3")]||""}-${c[idx("creditseg4")]||""}`,memo:c[idx("memo")]||""};items.push({id:uid(),source:{type:"Import",vendor:"Imported",invoiceNumber:"",amount:o.amount,invoiceDate:parseDate(o.date)||new Date(),description:o.memo,seg2:o.creditCombo.split("-")[0],seg3:o.creditCombo.split("-")[1],seg4:o.creditCombo.split("-")[2],lines:[]},amort:{enabled:false,method:"straight",months:1,startDate:parseDate(o.date)||new Date(),postOn:"EOM",expSeg2:o.debitCombo.split("-")[0],expSeg3:o.debitCombo.split("-")[1],expSeg4:o.debitCombo.split("-")[2],memoTemplate:o.memo},asset:{seg2:o.creditCombo.split("-")[0],seg3:o.creditCombo.split("-")[1],seg4:o.creditCombo.split("-")[2]},schedule:[{date:parseDate(o.date)||new Date(),amount:o.amount,debitCombo:o.debitCombo,creditCombo:o.creditCombo,memo:o.memo}]})});save();renderItems();renderActivity()};r.readAsText(f)}
+function handleImportSchedule(f){const r=new FileReader();r.onload=e=>{const rows=String(e.target.result).split(/\r?\n/).map(l=>l.split(/,|\t/));const hdr=rows.shift().map(x=>x.trim().toLowerCase());const idx=(n)=>hdr.indexOf(n);rows.forEach(c=>{if(!c.length)return;const o={date:c[idx("date")],amount:Number(c[idx("amount")]||0),debitCombo:`${c[idx("debitseg2")]||""}-${c[idx("debitseg3")]||""}-${c[idx("debitseg4")]||""}`,creditCombo:`${c[idx("creditseg2")]||""}-${c[idx("creditseg3")]||""}-${c[idx("creditseg4")]||""}`,memo:c[idx("memo")]||""};const it={id:uid(),source:{type:"Import",vendor:"Imported",invoiceNumber:"",amount:o.amount,invoiceDate:parseDate(o.date)||new Date(),description:o.memo,seg2:o.creditCombo.split("-")[0],seg3:o.creditCombo.split("-")[1],seg4:o.creditCombo.split("-")[2],lines:[]},amort:{enabled:false,method:"straight",months:1,startDate:parseDate(o.date)||new Date(),postOn:"EOM",expSeg2:o.debitCombo.split("-")[0],expSeg3:o.debitCombo.split("-")[1],expSeg4:o.debitCombo.split("-")[2],memoTemplate:o.memo},asset:{seg2:o.creditCombo.split("-")[0],seg3:o.creditCombo.split("-")[1],seg4:o.creditCombo.split("-")[2]},schedule:[{date:parseDate(o.date)||new Date(),amount:o.amount,debitCombo:o.debitCombo,creditCombo:o.creditCombo,memo:o.memo}]};it._schedParams=scheduleParams(it);items.push(it)});save();renderItems();renderActivity()};r.readAsText(f)}
 function handleImportJE(f){const r=new FileReader();r.onload=e=>{const rows=String(e.target.result).split(/\r?\n/).map(l=>l.split(/\t|,/));const hdr=rows.shift().map(x=>x.trim().toLowerCase());const g=(n)=>hdr.indexOf(n);rows.forEach(c=>{if(c.length<13)return;const deb=Number(c[g("debamt")]||0)||0;const crd=Number(c[g("crdamt")]||0)||0;const s2=c[g("segnumt")]||c[g("segnumt")];const s3=c[g("segnumt")]||c[g("segnumt")];const s4=c[g("segnumf")]||c[g("segnumf")];const memo=c[g("lngdsc")]||"";if(deb>0){reclassItems.push({id:uid(),vendor:"Imported JE",invoiceNumber:"",amount:deb,fromSeg2:"",fromSeg3:"",fromSeg4:"",toSeg2:s2,toSeg3:s3,toSeg4:s4,memo})}if(crd>0){reclassItems.push({id:uid(),vendor:"Imported JE",invoiceNumber:"",amount:crd,fromSeg2:s2,fromSeg3:s3,fromSeg4:s4,toSeg2:"",toSeg3:"",toSeg4:"",memo})}});save();renderReclass();renderActivity()};r.readAsText(f)}
 
 /* Tabs & events */
@@ -310,7 +304,7 @@ el("file").addEventListener("change",(e)=>{const f=e.target.files?.[0];if(f)load
 el("chk-all").addEventListener("change",(e)=>{const c=e.currentTarget.checked;groups.forEach(g=>{actionsByKey[g.key]={...(actionsByKey[g.key]||{}),amortize:c}});renderGroups()});
 el("add-to-amort").addEventListener("click",addSelectedToAmort);
 el("add-to-reclass").addEventListener("click",addSelectedToReclass);
-el("rebuild-all").addEventListener("click",()=>{items=items.map(it=>({...it,schedule:buildSchedule(it)}));save();renderItems()});
+el("rebuild-all").addEventListener("click",()=>{items=items.map(it=>({...it,schedule:buildSchedule(it),_schedParams:scheduleParams(it)}));save();renderItems()});
 el("clear-items").addEventListener("click",()=>{items=[];save();renderItems()});
 el("export").addEventListener("click",exportTXT);
 ["periodEnd","fiscalYY","actualMM","seqStart","jnlTitle"].forEach(id=>el(id).addEventListener("input",e=>{if(id==="periodEnd")periodEnd=e.target.value;if(id==="fiscalYY")fiscalYY=e.target.value.replace(/[^0-9]/g,"").slice(-2);if(id==="actualMM")actualMM=e.target.value.replace(/[^0-9]/g,"").slice(-2);if(id==="seqStart")seqStart=(e.target.value.replace(/[^0-9]/g,"").slice(-2)||"01");if(id==="jnlTitle")journalTitle=e.target.value;el(id).value=(id==="seqStart"?seqStart:(id==="fiscalYY"?fiscalYY:(id==="actualMM"?actualMM:e.target.value)));save()}));
