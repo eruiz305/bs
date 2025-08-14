@@ -58,7 +58,12 @@ async function loadMasterFile(){
         masterWB=XLSX.read(data,{type:"array"});
       }
     }
-  }catch{}
+  }catch{
+    masterWB=XLSX.utils.book_new();
+    const ws=XLSX.utils.aoa_to_sheet([["type","period","trndat","date","je","amount","debit","credit","memo","user","timestamp","vendor","invoiceNumber"]]);
+    XLSX.utils.book_append_sheet(masterWB,ws,MASTER_SHEET);
+    saveMasterFile();
+  }
   computeLatestClosedPeriod();
 }
 function saveMasterFile(){if(masterWB) XLSX.writeFile(masterWB,masterFilePath);}
