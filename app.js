@@ -475,7 +475,9 @@ loadMasterFile();
 if(defaults.fyy&&!fiscalYY)fiscalYY=defaults.fyy;
 if(defaults.amm&&!actualMM)actualMM=defaults.amm;
 if(defaults.jnltitle&&!journalTitle)journalTitle=defaults.jnltitle;
-if(!periodEnd&&closingPeriod)periodEnd=closingPeriodEnd();
-el("recon-period").value=closingPeriod||"";
+if(!periodEnd && typeof closingPeriod !== "undefined" && typeof closingPeriodEnd === "function") {
+  periodEnd = closingPeriodEnd();
+}
+el("recon-period").value = typeof closingPeriod !== "undefined" ? closingPeriod : "";
 if(periodEnd)el("periodEnd").value=periodEnd;if(fiscalYY)el("fiscalYY").value=fiscalYY;if(actualMM)el("actualMM").value=actualMM;if(seqStart)el("seqStart").value=seqStart;if(journalTitle)el("jnlTitle").value=journalTitle;
 renderItems();renderReclass();
