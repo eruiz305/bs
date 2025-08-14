@@ -17,12 +17,14 @@ let wbSheets={},wbNames=[];
 let apRows=[],apCols=[],mapCols={},groups=[],detailGroup=null,summaryTB=[],detailTB=[];
 let acctSheet="",acctCols={seg2:"",seg3:"",seg4:"",desc:"",active:""},acctMap=new Map(),acctList=[];
 let actionsByKey={},items=[],reclassItems=[];
+
 let periodEnd="",fiscalYY="",actualMM="",seqStart="01",journalTitle="Standard Amortization Entry";
-let defaults={fyy:"",amm:"",amemo:"{{vendor}} {{invnum}} amortization ({{start}}–{{end}})",jnltitle:"Standard Amortization Entry"};
+let defaults={fyy:"",amm:"",amemo:"{{vendor}} {{invnum}} amortization ({{start}}–{{end}})",jnltitle:"Standard Amortization Entry",groups:[]};
 let mode="amort";
 
 function save(){localStorage.setItem(STORAGE,JSON.stringify({profile,actionsByKey,items,reclassItems,periodEnd,fiscalYY,actualMM,seqStart,journalTitle,acctSheet,acctCols,defaults}))}
-function load(){try{const s=localStorage.getItem(STORAGE);if(s){const o=JSON.parse(s);profile=o.profile||profile;actionsByKey=o.actionsByKey||{};items=o.items||[];reclassItems=o.reclassItems||[];periodEnd=o.periodEnd||"";fiscalYY=o.fiscalYY||"";actualMM=o.actualMM||"";seqStart=o.seqStart||"01";journalTitle=o.journalTitle||journalTitle;acctSheet=o.acctSheet||"";acctCols=o.acctCols||acctCols;defaults=o.defaults||defaults}}catch{}}
+function load(){try{const s=localStorage.getItem(STORAGE);if(s){const o=JSON.parse(s);profile=o.profile||profile;actionsByKey=o.actionsByKey||{};items=o.items||[];reclassItems=o.reclassItems||[];periodEnd=o.periodEnd||"";fiscalYY=o.fiscalYY||"";actualMM=o.actualMM||"";seqStart=o.seqStart||"01";journalTitle=o.journalTitle||journalTitle;acctSheet=o.acctSheet||"";acctCols=o.acctCols||acctCols;defaults=o.defaults||defaults;if(!defaults.groups)defaults.groups=[]}}catch{}}
+
 
 function renderProfile(){const name=profile.first&&profile.last?`${profile.first} ${profile.last}`:"Not set";setText("user-line",`${name} · ${profile.email||""}`);setText("user-badge",name?`${name}`:"Not signed in");el("login").style.display=(profile.email? "none":"flex")}
 function openProfile(){el("u-first").value=profile.first||"";el("u-last").value=profile.last||"";el("u-email").value=profile.email||"";el("login").style.display="flex"}
@@ -33,9 +35,11 @@ function setMode(m){
   el("amort-view").style.display=m==="amort"?"block":"none";
   el("activity-view").style.display=m==="activity"?"block":"none";
   el("settings-view").style.display=m==="settings"?"block":"none";
+  el("recon-view").style.display=m==="recon"?"block":"none";
   el("tab-amort").classList.toggle("active",m==="amort");
   el("tab-activity").classList.toggle("active",m==="activity");
   el("tab-settings").classList.toggle("active",m==="settings");
+  el("tab-recon").classList.toggle("active",m==="recon");
 }
 
 function renderMapUI(){
@@ -51,6 +55,7 @@ function openDetail(g){detailGroup=g;el("dlg-title").textContent=`Invoice ${g.in
 
 function renderSelectedTotal(){const total=groups.filter(g=>actionsByKey[g.key]?.amortize).reduce((a,b)=>a+(b.amount||0),0);setText("sel-total",fmtUSD.format(total))}
 function updateActionButtons(){const anyAm=groups.some(g=>actionsByKey[g.key]?.amortize);const anyRc=groups.some(g=>actionsByKey[g.key]?.reclass);el("add-to-amort").disabled=!anyAm;el("add-to-reclass").disabled=!anyRc}
+
 
 function addSelectedToAmort(){const picks=groups.filter(g=>actionsByKey[g.key]?.amortize);const newItems=picks.map(g=>({id:uid(),source:{type:"AP",vendor:g.vendor,invoiceNumber:g.invoiceNumber,amount:g.amount,invoiceDate:g.date||new Date(),description:g.rows[0]?.description||"",seg2:g.rows[0]?.seg2||"",seg3:g.rows[0]?.seg3||"",seg4:g.rows[0]?.seg4||"",lines:g.rows},amort:{enabled:true,method:"straight",months:12,startDate:g.date||new Date(),postOn:"EOM",expSeg2:"",expSeg3:"",expSeg4:"",memoTemplate:defaults.amemo},asset:{seg2:g.rows[0]?.seg2||"",seg3:g.rows[0]?.seg3||"",seg4:g.rows[0]?.seg4||""},schedule:[]}));items=items.concat(newItems);save();renderItems()}
 function addSelectedToReclass(){const picks=groups.filter(g=>actionsByKey[g.key]?.reclass);const newItems=picks.map(g=>({id:uid(),vendor:g.vendor,invoiceNumber:g.invoiceNumber,amount:g.amount,fromSeg2:g.rows[0]?.seg2||"",fromSeg3:g.rows[0]?.seg3||"",fromSeg4:g.rows[0]?.seg4||"",toSeg2:"",toSeg3:"",toSeg4:"",memo:`Reclass ${g.vendor||""} ${g.invoiceNumber||""}`}));reclassItems=reclassItems.concat(newItems);save();renderReclass()}
@@ -137,7 +142,12 @@ function renderItems(){
   });
 }
 
-function renderReclass(){const host=el("reclass-items");host.innerHTML="";el("reclass-empty").style.display=reclassItems.length?"none":"block";reclassItems.forEach(it=>{const card=document.createElement("div");card.className="card";const h2=document.createElement("h2");h2.style.display="flex";h2.style.justifyContent="space-between";h2.style.alignItems="center";h2.innerHTML=`<span>${it.vendor} — ${it.invoiceNumber}</span>`;const rm=document.createElement("button");rm.className="ghost";rm.textContent="Remove";rm.onclick=()=>{reclassItems=reclassItems.filter(x=>x.id!==it.id);save();renderReclass()};h2.appendChild(rm);card.appendChild(h2);const c=document.createElement("div");c.className="content";const meta=document.createElement("div");meta.className="small";meta.style.marginBottom="8px";meta.textContent=`From ${(it.fromSeg2||"")}-${(it.fromSeg3||"")}-${(it.fromSeg4||"")} · Amount ${fmtUSD.format(it.amount)}`;c.appendChild(meta);const grid=document.createElement("div");grid.className="grid3";const t2=document.createElement("div");t2.innerHTML=`<label>To Account</label>`;const t2in=document.createElement("input");t2in.type="text";t2in.value=it.toSeg2||"";t2in.oninput=()=>{it.toSeg2=t2in.value;save();mark()};t2.appendChild(t2in);grid.appendChild(t2);const t3=document.createElement("div");t3.innerHTML=`<label>Department</label>`;const t3in=document.createElement("input");t3in.type="text";t3in.value=it.toSeg3||"";t3in.oninput=()=>{it.toSeg3=t3in.value;save();mark()};t3.appendChild(t3in);grid.appendChild(t3);const t4=document.createElement("div");t4.innerHTML=`<label>Location</label>`;const t4in=document.createElement("input");t4in.type="text";t4in.value=it.toSeg4||"";t4in.oninput=()=>{it.toSeg4=t4in.value;save();mark()};t4.appendChild(t4in);grid.appendChild(t4);const memo=document.createElement("div");memo.style.gridColumn="1/-1";memo.innerHTML=`<label>Memo</label>`;const memoIn=document.createElement("input");memoIn.type="text";memoIn.value=it.memo||"";memoIn.oninput=()=>{it.memo=memoIn.value;save()};memo.appendChild(memoIn);grid.appendChild(memo);const note=document.createElement("div");note.style.gridColumn="1/-1";c.appendChild(grid);c.appendChild(note);function mark(){[t2in,t3in,t4in].forEach(x=>x.classList.remove("invalid"));const desc=acctLookup(it.toSeg2,it.toSeg3,it.toSeg4);note.innerHTML=desc?`<div class="valid-note">Target: ${desc}</div>`:(it.toSeg2||it.toSeg3||it.toSeg4)?`<div class="invalid-note">Target combo not found</div>`:""}mark();card.appendChild(c);host.appendChild(card)})}
+
+function renderReclass(){const host=el("reclass-items");host.innerHTML="";el("reclass-empty").style.display=reclassItems.length?"none":"block";reclassItems.forEach(it=>{const card=document.createElement("div");card.className="card";const locked=Object.keys(it.reconciled||{}).some(p=>p<=closingPeriod);const h2=document.createElement("h2");h2.style.display="flex";h2.style.justifyContent="space-between";h2.style.alignItems="center";h2.innerHTML=`<span>${it.vendor} — ${it.invoiceNumber}</span>`;const rm=document.createElement("button");rm.className="ghost";rm.textContent="Remove";rm.onclick=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');return;}reclassItems=reclassItems.filter(x=>x.id!==it.id);save();renderReclass()};h2.appendChild(rm);card.appendChild(h2);const c=document.createElement("div");c.className="content";const meta=document.createElement("div");meta.className="small";meta.style.marginBottom="8px";meta.textContent=`From ${(it.fromSeg2||"")}-${(it.fromSeg3||"")}-${(it.fromSeg4||"")} · Amount ${fmtUSD.format(it.amount)}`;c.appendChild(meta);const grid=document.createElement("div");grid.className="grid3";const t2=document.createElement("div");t2.innerHTML=`<label>To Account</label>`;const t2in=document.createElement("input");t2in.type="text";t2in.value=it.toSeg2||"";t2in.oninput=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');t2in.value=it.toSeg2||'';return;}it.toSeg2=t2in.value;save();mark()};t2.appendChild(t2in);grid.appendChild(t2);const t3=document.createElement("div");t3.innerHTML=`<label>Department</label>`;const t3in=document.createElement("input");t3in.type="text";t3in.value=it.toSeg3||"";t3in.oninput=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');t3in.value=it.toSeg3||'';return;}it.toSeg3=t3in.value;save();mark()};t3.appendChild(t3in);grid.appendChild(t3);const t4=document.createElement("div");t4.innerHTML=`<label>Location</label>`;const t4in=document.createElement("input");t4in.type="text";t4in.value=it.toSeg4||"";t4in.oninput=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');t4in.value=it.toSeg4||'';return;}it.toSeg4=t4in.value;save();mark()};t4.appendChild(t4in);grid.appendChild(t4);const memo=document.createElement("div");memo.style.gridColumn="1/-1";memo.innerHTML=`<label>Memo</label>`;const memoIn=document.createElement("input");memoIn.type="text";memoIn.value=it.memo||"";memoIn.oninput=()=>{if(locked){alert('Transaction is reconciled and cannot be edited');memoIn.value=it.memo||'';return;}it.memo=memoIn.value;save()};memo.appendChild(memoIn);grid.appendChild(memo);const note=document.createElement("div");note.style.gridColumn="1/-1";c.appendChild(grid);c.appendChild(note);function mark(){[t2in,t3in,t4in].forEach(x=>x.classList.remove("invalid"));const desc=acctLookup(it.toSeg2,it.toSeg3,it.toSeg4);note.innerHTML=desc?`<div class="valid-note">Target: ${desc}</div>`:(it.toSeg2||it.toSeg3||it.toSeg4)?`<div class="invalid-note">Target combo not found</div>`:""}mark();card.appendChild(c);if(locked){const ov=document.createElement('div');ov.style.position='absolute';ov.style.inset='0';ov.style.background='rgba(255,255,255,0.6)';ov.style.display='flex';ov.style.alignItems='center';ov.style.justifyContent='center';ov.style.fontWeight='700';ov.textContent='Reconciled';ov.onclick=()=>alert('Transaction is reconciled and cannot be edited');card.style.position='relative';card.appendChild(ov);}host.appendChild(card)})}
+
+function renderReconciliation(){const host=el('recon-table');if(!host)return;const period=el('recon-period').value||closingPeriod||"";const t=document.createElement('table');t.innerHTML='<thead><tr><th>Type</th><th>Info</th><th>Account</th><th>Reconciled</th></tr></thead>';const tb=document.createElement('tbody');items.forEach(it=>{const combo=`${it.asset.seg2||it.source.seg2||""}-${it.asset.seg3||it.source.seg3||""}-${it.asset.seg4||it.source.seg4||""}`;const tr=document.createElement('tr');tr.innerHTML=`<td>Amort</td><td>${it.source.vendor} ${it.source.invoiceNumber}</td><td>${combo}</td>`;const td=document.createElement('td');const chk=document.createElement('input');chk.type='checkbox';chk.checked=!!(it.reconciled&&it.reconciled[period]);chk.onchange=()=>{it.reconciled=it.reconciled||{};if(chk.checked)it.reconciled[period]=true;else delete it.reconciled[period];save();renderItems();renderReclass();};td.appendChild(chk);tr.appendChild(td);tb.appendChild(tr)});reclassItems.forEach(it=>{const combo=`${it.fromSeg2||""}-${it.fromSeg3||""}-${it.fromSeg4||""}`;const tr=document.createElement('tr');tr.innerHTML=`<td>Reclass</td><td>${it.vendor} ${it.invoiceNumber}</td><td>${combo}</td>`;const td=document.createElement('td');const chk=document.createElement('input');chk.type='checkbox';chk.checked=!!(it.reconciled&&it.reconciled[period]);chk.onchange=()=>{it.reconciled=it.reconciled||{};if(chk.checked)it.reconciled[period]=true;else delete it.reconciled[period];save();renderItems();renderReclass();};td.appendChild(chk);tr.appendChild(td);tb.appendChild(tr)});t.appendChild(tb);host.innerHTML='';host.appendChild(t)}
+
+function renderPeriods(){const tb=el('period-table')?.querySelector('tbody');if(!tb)return;tb.innerHTML='';periods.forEach((p,i)=>{const tr=document.createElement('tr');const td0=document.createElement('td');const in0=document.createElement('input');in0.type='month';in0.value=p.period||'';in0.oninput=()=>{p.period=in0.value;save();};td0.appendChild(in0);tr.appendChild(td0);const td1=document.createElement('td');const in1=document.createElement('input');in1.type='date';in1.value=p.begin||'';in1.oninput=()=>{p.begin=in1.value;save();};td1.appendChild(in1);tr.appendChild(td1);const td2=document.createElement('td');const in2=document.createElement('input');in2.type='date';in2.value=p.end||'';in2.oninput=()=>{p.end=in2.value;save();};td2.appendChild(in2);tr.appendChild(td2);const td3=document.createElement('td');const btn=document.createElement('button');btn.className='ghost';btn.textContent='✖';btn.onclick=()=>{periods.splice(i,1);save();renderPeriods();};td3.appendChild(btn);tr.appendChild(td3);tb.appendChild(tr);})}
 
 function apModuleTotal(){return groups.reduce((a,g)=>a+(g.amount||0),0)}
 function apNetTB(){if(!summaryTB.length)return 0;const rows=summaryTB.filter(r=>{const mod=(r["modsrc"]??r["Modsrc"]??r["MODSRC"]??"").toString().toUpperCase();const j=(r["jnlsrc"]??r["Jnlsrc"]??r["JNLSRC"]??"").toString().toUpperCase();return mod.includes("AP")&&j.includes("BCHCLS")});const dKey=Object.keys(summaryTB[0]||{}).find(k=>k.toLowerCase().includes("debit"));const cKey=Object.keys(summaryTB[0]||{}).find(k=>k.toLowerCase().includes("credit"));return round2(rows.reduce((a,r)=>a+(Number(dKey?r[dKey]:0)||0)-(Number(cKey?r[cKey]:0)||0),0))}
@@ -241,25 +251,49 @@ function loadWorkbook(file){
   reader.readAsArrayBuffer(file);
 }
 
-function buildActivitySelect(){const sel=el("act-select");sel.innerHTML="";acctList.slice(0,4000).forEach(a=>{const o=document.createElement("option");o.value=a.key;o.textContent=`${a.key} — ${a.desc}`;sel.appendChild(o)})}
+
+function buildActivitySelect(){
+  const sel=el("act-select");sel.innerHTML="";
+  const selected=parseCombos(el("act-search").value);
+  acctList.slice(0,4000).forEach(a=>{
+    const o=document.createElement("option");
+    o.value=a.key;o.textContent=`${a.key} — ${a.desc}`;
+    o.selected=selected.includes(a.key);
+    sel.appendChild(o);
+  });
+}
 
 function renderActivity(){
   const ref=el("act-period").value||toISO(new Date());
-  const combo=(el("act-search").value||el("act-select").value||"").trim();
-  const sum=el("act-summary");const host=el("act-table");sum.innerHTML="";host.innerHTML="";
-  if(!combo){sum.innerHTML='<span class="small">Enter or select an account combo.</span>';return}
-  const calc=actCalcForCombo(combo,ref);const tb=actTBForCombo(combo,ref);const months=calc.months;
+  const sel=el("act-select");
+  let combos=parseCombos(el("act-search").value);
+  if(!combos.length) combos=Array.from(sel.selectedOptions).map(o=>o.value);
+  combos=[...new Set(combos)];
+  Array.from(sel.options).forEach(o=>o.selected=combos.includes(o.value));
+  el("act-search").value=combos.join(", ");
+  const sum=el("act-summary"),host=el("act-table");sum.innerHTML="";host.innerHTML="";
+  if(!combos.length){sum.innerHTML='<span class="small">Enter or select an account combo.</span>';return}
+  const months=actMonths(ref);
+  const calcMap=Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}]));
+  const tbMap=detailTB.length?Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}])):null;
+  combos.forEach(c=>{
+    const calc=actCalcForCombo(c,ref);months.forEach(m=>{const k=monthKey(m);calcMap[k].dr+=calc.map[k].dr;calcMap[k].cr+=calc.map[k].cr});
+    if(tbMap){const tb=actTBForCombo(c,ref);if(tb)months.forEach(m=>{const k=monthKey(m);tbMap[k].dr+=tb.map[k].dr;tbMap[k].cr+=tb.map[k].cr})}
+  });
   const hdr=`<tr><th>Row</th>${months.map(m=>`<th class="num">${m.toLocaleString(undefined,{month:"short"})} Dr</th><th class="num">${m.toLocaleString(undefined,{month:"short"})} Cr</th>`).join("")}<th class="num">Total Dr</th><th class="num">Total Cr</th></tr>`;
   const rowFrom=(label,mp)=>`<tr><td>${label}</td>${months.map(m=>{const k=monthKey(m);const v=mp[k]||{dr:0,cr:0};return `<td class="num">${fmtUSD.format(v.dr)}</td><td class="num">${fmtUSD.format(v.cr)}</td>`}).join("")}<td class="num">${fmtUSD.format(months.reduce((a,m)=>a+(mp[monthKey(m)]?.dr||0),0))}</td><td class="num">${fmtUSD.format(months.reduce((a,m)=>a+(mp[monthKey(m)]?.cr||0),0))}</td></tr>`;
-  const t=document.createElement("table");t.innerHTML=`<thead>${hdr}</thead><tbody>${rowFrom("Calculated",calc.map)}${tb?rowFrom("TB",tb.map):""}</tbody>`;host.appendChild(t);
-  const desc=acctLookup(...combo.split("-"));sum.innerHTML=`<div class="row"><span class="pill">${combo}</span><span class="small">${desc||""}</span></div>`;
+  const t=document.createElement("table");t.innerHTML=`<thead>${hdr}</thead><tbody>${rowFrom("Calculated",calcMap)}${tbMap?rowFrom("TB",tbMap):""}</tbody>`;host.appendChild(t);
+  sum.innerHTML=combos.map(c=>{const desc=acctLookup(...c.split("-"));return `<div class=\"row\"><span class=\"pill\">${c}</span><span class=\"small\">${desc||""}</span></div>`}).join("");
 }
+
 function actMonths(ref){const arr=[];const base=ref?new Date(ref):new Date();for(let i=0;i<12;i++){const d=new Date(base.getFullYear(),base.getMonth()-11+i,1);arr.push(new Date(d.getFullYear(),d.getMonth(),1))}return arr}
 function monthKey(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")}
-function actCalcForCombo(combo,refDate){const months=actMonths(refDate);const map=Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}]));items.forEach(it=>{(it.schedule||[]).forEach(r=>{const d=new Date(r.date);const k=monthKey(new Date(d.getFullYear(),d.getMonth(),1));if(!map[k])return;if(r.debitCombo===combo) map[k].dr+=Number(r.amount)||0;if(r.creditCombo===combo) map[k].cr+=Number(r.amount)||0})});reclassItems.forEach(j=>{const k=monthKey(new Date(refDate||new Date()));if(j.toSeg2+"-"+j.toSeg3+"-"+j.toSeg4===combo) map[k].dr+=Number(j.amount)||0;if(j.fromSeg2+"-"+j.fromSeg3+"-"+j.fromSeg4===combo) map[k].cr+=Number(j.amount)||0});return {months,map}}
-function actTBForCombo(combo,refDate){if(!detailTB.length)return null;const seg2k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg2")||k.toLowerCase().includes("segnumtwo"));const seg3k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg3")||k.toLowerCase().includes("segnumthr"));const seg4k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg4")||k.toLowerCase().includes("segnumfou"));const datek=Object.keys(detailTB[0]).find(k=>/date|trndat|trandat|posting/i.test(k));const debitk=Object.keys(detailTB[0]).find(k=>/debit|debitamt|debamt/i.test(k));const creditk=Object.keys(detailTB[0]).find(k=>/credit|crdamt|cramt/i.test(k));if(!seg2k||!seg3k||!seg4k||!datek||!(debitk||creditk))return null;const months=actMonths(refDate);const map=Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}]));detailTB.forEach(r=>{const k=[r[seg2k],r[seg3k],r[seg4k]].map(x=>String(x||"")).join("-");if(k!==combo)return;const d=parseDate(r[datek]);if(!d)return;const mk=monthKey(new Date(d.getFullYear(),d.getMonth(),1));if(!map[mk])return;const dr=Number((debitk&&r[debitk])||0)||0;const cr=Number((creditk&&r[creditk])||0)||0;map[mk].dr+=dr;map[mk].cr+=cr});return {months,map}}
+function actCalcForCombo(combo,refDate){const combos=Array.isArray(combo)?combo:[combo];const set=new Set(combos);const months=actMonths(refDate);const map=Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}]));items.forEach(it=>{(it.schedule||[]).forEach(r=>{const d=new Date(r.date);const k=monthKey(new Date(d.getFullYear(),d.getMonth(),1));if(!map[k])return;if(set.has(r.debitCombo)) map[k].dr+=Number(r.amount)||0;if(set.has(r.creditCombo)) map[k].cr+=Number(r.amount)||0})});reclassItems.forEach(j=>{const k=monthKey(new Date(refDate||new Date()));if(set.has(j.toSeg2+"-"+j.toSeg3+"-"+j.toSeg4)) map[k].dr+=Number(j.amount)||0;if(set.has(j.fromSeg2+"-"+j.fromSeg3+"-"+j.fromSeg4)) map[k].cr+=Number(j.amount)||0});return {months,map}}
+function actTBForCombo(combo,refDate){if(!detailTB.length)return null;const seg2k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg2")||k.toLowerCase().includes("segnumtwo"));const seg3k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg3")||k.toLowerCase().includes("segnumthr"));const seg4k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg4")||k.toLowerCase().includes("segnumfou"));const datek=Object.keys(detailTB[0]).find(k=>/date|trndat|trandat|posting/i.test(k));const debitk=Object.keys(detailTB[0]).find(k=>/debit|debitamt|debamt/i.test(k));const creditk=Object.keys(detailTB[0]).find(k=>/credit|crdamt|cramt/i.test(k));if(!seg2k||!seg3k||!seg4k||!datek||!(debitk||creditk))return null;const combos=Array.isArray(combo)?combo:[combo];const set=new Set(combos);const months=actMonths(refDate);const map=Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}]));detailTB.forEach(r=>{const k=[r[seg2k],r[seg3k],r[seg4k]].map(x=>String(x||"")).join("-");if(!set.has(k))return;const d=parseDate(r[datek]);if(!d)return;const mk=monthKey(new Date(d.getFullYear(),d.getMonth(),1));if(!map[mk])return;const dr=Number((debitk&&r[debitk])||0)||0;const cr=Number((creditk&&r[creditk])||0)||0;map[mk].dr+=dr;map[mk].cr+=cr});return {months,map}}
 
-function buildActivityDefaults(){el("act-period").value=periodEnd||toISO(new Date());buildActivitySelect();renderActivity()}
+
+function buildActivityDefaults(){el("act-period").value=periodEnd||toISO(new Date());buildGroupFilter();buildActivitySelect();renderActivity()}
+
 
 function handleImportSchedule(f){const r=new FileReader();r.onload=e=>{const rows=String(e.target.result).split(/\r?\n/).map(l=>l.split(/,|\t/));const hdr=rows.shift().map(x=>x.trim().toLowerCase());const idx=(n)=>hdr.indexOf(n);rows.forEach(c=>{if(!c.length)return;const o={date:c[idx("date")],amount:Number(c[idx("amount")]||0),debitCombo:`${c[idx("debitseg2")]||""}-${c[idx("debitseg3")]||""}-${c[idx("debitseg4")]||""}`,creditCombo:`${c[idx("creditseg2")]||""}-${c[idx("creditseg3")]||""}-${c[idx("creditseg4")]||""}`,memo:c[idx("memo")]||""};const it={id:uid(),source:{type:"Import",vendor:"Imported",invoiceNumber:"",amount:o.amount,invoiceDate:parseDate(o.date)||new Date(),description:o.memo,seg2:o.creditCombo.split("-")[0],seg3:o.creditCombo.split("-")[1],seg4:o.creditCombo.split("-")[2],lines:[]},amort:{enabled:false,method:"straight",months:1,startDate:parseDate(o.date)||new Date(),postOn:"EOM",expSeg2:o.debitCombo.split("-")[0],expSeg3:o.debitCombo.split("-")[1],expSeg4:o.debitCombo.split("-")[2],memoTemplate:o.memo},asset:{seg2:o.creditCombo.split("-")[0],seg3:o.creditCombo.split("-")[1],seg4:o.creditCombo.split("-")[2]},schedule:[{date:parseDate(o.date)||new Date(),amount:o.amount,debitCombo:o.debitCombo,creditCombo:o.creditCombo,memo:o.memo}]};it._schedParams=scheduleParams(it);items.push(it)});save();renderItems();renderActivity()};r.readAsText(f)}
 function handleImportJE(f){const r=new FileReader();r.onload=e=>{const rows=String(e.target.result).split(/\r?\n/).map(l=>l.split(/\t|,/));const hdr=rows.shift().map(x=>x.trim().toLowerCase());const g=(n)=>hdr.indexOf(n);rows.forEach(c=>{if(c.length<13)return;const deb=Number(c[g("debamt")]||0)||0;const crd=Number(c[g("crdamt")]||0)||0;const s2=c[g("segnumt")]||c[g("segnumt")];const s3=c[g("segnumt")]||c[g("segnumt")];const s4=c[g("segnumf")]||c[g("segnumf")];const memo=c[g("lngdsc")]||"";if(deb>0){reclassItems.push({id:uid(),vendor:"Imported JE",invoiceNumber:"",amount:deb,fromSeg2:"",fromSeg3:"",fromSeg4:"",toSeg2:s2,toSeg3:s3,toSeg4:s4,memo})}if(crd>0){reclassItems.push({id:uid(),vendor:"Imported JE",invoiceNumber:"",amount:crd,fromSeg2:s2,fromSeg3:s3,fromSeg4:s4,toSeg2:"",toSeg3:"",toSeg4:"",memo})}});save();renderReclass();renderActivity()};r.readAsText(f)}
@@ -279,13 +313,22 @@ el("acct-sheet").addEventListener("change",e=>{acctSheet=e.target.value;const co
 ["acct-seg2","acct-seg3","acct-seg4","acct-desc","acct-active"].forEach((id,i)=>el(id).addEventListener("change",e=>{acctCols[["seg2","seg3","seg4","desc","active"][i]]=e.target.value;save()}));
 el("acct-build").addEventListener("click",()=>{buildAcctIndex();save()});
 
+
 el("tab-amort").onclick=()=>setMode("amort");
 el("tab-activity").onclick=()=>{setMode("activity");buildActivityDefaults()};
 el("tab-settings").onclick=()=>{setMode("settings");renderSettings()};
 el("act-refresh").onclick=renderActivity;
-el("act-select").addEventListener("change",()=>{el("act-search").value=el("act-select").value;renderActivity()});
+
+el("act-select").addEventListener("change",()=>{
+  const sel=el("act-select");
+  const vals=Array.from(sel.selectedOptions).map(o=>o.value);
+  el("act-search").value=vals.join(", ");
+  renderActivity();
+});
+
 el("act-search").addEventListener("input",renderActivity);
 el("act-period").addEventListener("input",renderActivity);
+
 
 el("imp-sched").addEventListener("change",e=>{const f=e.target.files?.[0];if(f)handleImportSchedule(f)});
 el("imp-je").addEventListener("change",e=>{const f=e.target.files?.[0];if(f)handleImportJE(f)});
@@ -303,12 +346,38 @@ el("dl-je").addEventListener("click",()=>downloadBlob(
   "2025-07-31\tGL\t250701\tSample JE\tGL\t01\t11415\t000\t02\t\t0\t1000\tSample credit line\n"
 ));
 
+
 /* Settings */
+function renderGroupTable(){
+  const tbody=el("grp-rows");
+  tbody.innerHTML="";
+  (defaults.groups||[]).forEach((g,i)=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td><input data-idx="${i}" data-k="group" type="text" value="${g.group||""}"></td>`+
+    `<td><input data-idx="${i}" data-k="seg2" type="text" value="${g.seg2||""}"></td>`+
+    `<td><input data-idx="${i}" data-k="seg3" type="text" value="${g.seg3||""}"></td>`+
+    `<td><input data-idx="${i}" data-k="seg4" type="text" value="${g.seg4||""}"></td>`+
+    `<td><button data-idx="${i}" class="grp-del">✖</button></td>`;
+    tbody.appendChild(tr);
+  });
+  tbody.querySelectorAll("input").forEach(inp=>{
+    inp.addEventListener("input",e=>{
+      const {idx,k}=e.target.dataset;defaults.groups[idx][k]=e.target.value.trim();
+    });
+  });
+  tbody.querySelectorAll(".grp-del").forEach(btn=>{
+    btn.addEventListener("click",e=>{const {idx}=e.target.dataset;defaults.groups.splice(idx,1);renderGroupTable()});
+  });
+}
+
+
 function renderSettings(){
   el("set-fyy").value=defaults.fyy||fiscalYY||"";
   el("set-amm").value=defaults.amm||actualMM||"";
   el("set-amemo").value=defaults.amemo||"";
   el("set-jnltitle").value=defaults.jnltitle||journalTitle||"";
+
+  renderGroupTable();
 }
 el("set-save").onclick=()=>{
   defaults.fyy=el("set-fyy").value.replace(/[^0-9]/g,"").slice(-2);
@@ -318,7 +387,11 @@ el("set-save").onclick=()=>{
   if(!fiscalYY)fiscalYY=defaults.fyy; if(!actualMM)actualMM=defaults.amm; if(!journalTitle)journalTitle=defaults.jnltitle;
   el("fiscalYY").value=fiscalYY; el("actualMM").value=actualMM; el("jnlTitle").value=journalTitle;
   save();
+  buildGroupFilter();buildActivitySelect();
 };
+el("grp-add").onclick=()=>{defaults.groups.push({group:"",seg2:"",seg3:"",seg4:""});renderGroupTable()};
+=======
+
 
 el("edit-user").onclick=openProfile;el("force-login").onclick=openProfile;el("u-save").onclick=()=>{applyProfile();el("login").style.display="none"};
 
@@ -326,5 +399,7 @@ load();renderProfile();setMode("amort");
 if(defaults.fyy&&!fiscalYY)fiscalYY=defaults.fyy;
 if(defaults.amm&&!actualMM)actualMM=defaults.amm;
 if(defaults.jnltitle&&!journalTitle)journalTitle=defaults.jnltitle;
+if(!periodEnd&&closingPeriod)periodEnd=closingPeriodEnd();
+el("recon-period").value=closingPeriod||"";
 if(periodEnd)el("periodEnd").value=periodEnd;if(fiscalYY)el("fiscalYY").value=fiscalYY;if(actualMM)el("actualMM").value=actualMM;if(seqStart)el("seqStart").value=seqStart;if(journalTitle)el("jnlTitle").value=journalTitle;
 renderItems();renderReclass();
