@@ -190,15 +190,18 @@
       </div>
     </div>
 
+
     <div id="activity-view" style="display:none">
-      <div class="card">
-        <h2>Activity Browser & Amortization Schedule</h2>
+      <div class="tabs">
+        <button id="act-tab-sched" class="active">Amortization Schedule</button>
+        <button id="act-tab-other">Other</button>
+      </div>
+      <div class="card" id="act-sched-card">
+        <h2>Activity – Amortization Schedule</h2>
         <div class="content">
-
           <div class="grid3">
-            <div><label>Account Combo</label><input id="act-search" type="text" placeholder="11415-000-02,11415-000-03"/></div>
-            <div><label>Select From GL Accounts</label><select id="act-select" multiple></select></div>
-
+            <div><label>Account Combo</label><input id="act-search" type="text" placeholder="11415-000-02"/></div>
+            <div><label>Select From GL Accounts</label><select id="act-select"></select></div>
             <div><label>Reference Period End</label><input id="act-period" type="date"/></div>
           </div>
           <div class="row" style="margin-top:8px"><button id="act-refresh">Refresh</button></div>
@@ -207,7 +210,13 @@
         </div>
       </div>
 
+      <div class="card" id="act-other-card" style="display:none">
+        <h2>Activity – Other</h2>
+        <div id="act-other" class="content"></div>
+      </div>
+
       <div class="card">
+
         <h2>Optional Import</h2>
         <div class="content grid3">
           <div>
