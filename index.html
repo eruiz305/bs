@@ -59,6 +59,7 @@
       <div class="tabs">
         <button id="tab-amort" class="active">Amortization Builder</button>
         <button id="tab-activity">Account Activity & Schedules</button>
+        <button id="tab-recon">Reconciliation</button>
         <button id="tab-settings">Settings</button>
       </div>
       <div class="row">
@@ -221,6 +222,16 @@
       </div>
     </div>
 
+    <div id="recon-view" style="display:none">
+      <div class="card">
+        <h2>Reconciliation</h2>
+        <div class="content">
+          <div class="row"><div><label>Period</label><input id="recon-period" type="month"/></div></div>
+          <div id="recon-table" class="scroll" style="margin-top:8px"></div>
+        </div>
+      </div>
+    </div>
+
     <div id="settings-view" style="display:none">
       <div class="card">
         <h2>Settings</h2>
@@ -232,6 +243,21 @@
           <div class="row" style="grid-column:1/-1;margin-top:6px">
             <button id="set-save">Save</button>
             <span class="small">These defaults prefill Export and new amortizations.</span>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Fiscal Periods</h2>
+        <div class="content">
+          <div class="row" style="align-items:center;gap:12px">
+            <div><label>Current Closing Period</label><input id="set-closing" type="month"/></div>
+            <button id="add-period" class="secondary">Add Period</button>
+          </div>
+          <div class="scroll" style="margin-top:8px">
+            <table id="period-table" style="width:100%">
+              <thead><tr><th>Period</th><th>Begin</th><th>End</th><th></th></tr></thead>
+              <tbody></tbody>
+            </table>
           </div>
         </div>
       </div>
