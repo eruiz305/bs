@@ -56,8 +56,19 @@
 </head>
 <body>
   <div class="container">
-    <div class="bar">
-      <div style="font-weight:700">Sun Orchard Balance Sheet Reconciler</div>
+    <div id="home-view">
+      <h1>Sun Orchard Balance Reconciliation Tool</h1>
+      <div class="row">
+        <button id="btn-prepaid">Prepaid</button>
+        <button id="btn-intangible">Intangible</button>
+        <button id="btn-accruals">Accruals</button>
+      </div>
+    </div>
+    <div id="app-bar" class="bar">
+      <div class="row">
+        <button id="home-btn" class="secondary" style="display:none">Home</button>
+        <div style="font-weight:700">Sun Orchard Balance Sheet Reconciler</div>
+      </div>
       <div class="tabs">
         <button id="tab-amort" class="active">Amortization Builder</button>
         <button id="tab-activity">Account Activity & Schedules</button>
@@ -70,7 +81,7 @@
       </div>
     </div>
 
-    <div class="card">
+    <div id="login-card" class="card">
       <h2>0) Login</h2>
       <div class="content">
         <div class="row">
@@ -271,9 +282,15 @@
         </div>
       </div>
     </div>
+    <div id="intangible-view" style="display:none">
+      <h2>Intangible Reconciliation</h2>
+      <p>Coming soon</p>
+    </div>
+    <div id="accrual-view" style="display:none">
+      <h2>Accrual Reconciliation</h2>
+      <p>Coming soon</p>
+    </div>
   </div>
-
-
 
   <div id="dlg" class="dialog-backdrop">
     <div class="dialog">
