@@ -299,10 +299,24 @@ function loadWorkbook(file){
     wbNames=wb.SheetNames.slice();
     wbSheets=Object.fromEntries(wb.SheetNames.map(n=>[n,XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:null})]));
 
-    const apName=wb.SheetNames.find(n=>n.toLowerCase().includes("module")&&n.toLowerCase().includes("ap"))||wb.SheetNames.find(n=>n.toLowerCase().includes("module"))||wb.SheetNames[0];
-    const ap=wbSheets[apName]||[];
-    apCols=filterUsableCols(Object.keys(ap[0]||{}));
-    apRows=ap;mapCols=guessMap(apCols);el("fname").textContent=file.name+" → "+apName;showDetected(apCols);renderMapUI();
+    const processAP=(name)=>{
+      const ap=wbSheets[name]||[];
+      if(!ap.length) return false;
+      apCols=filterUsableCols(Object.keys(ap[0]||{}));
+      apRows=ap;mapCols=guessMap(apCols);el("fname").textContent=file.name+" → "+name;showDetected(apCols);renderMapUI();
+      return true;
+    };
+
+    let apName=wb.SheetNames.find(n=>n.toLowerCase().includes("module")&&n.toLowerCase().includes("ap"))||wb.SheetNames.find(n=>n.toLowerCase().includes("module"))||wb.SheetNames[0];
+    if(!processAP(apName)){
+      let choice;
+      while(true){
+        choice=prompt("Select a sheet to load:\n"+wb.SheetNames.join("\n"),wb.SheetNames[0]);
+        if(!choice) return;
+        apName=choice;
+        if(processAP(apName)) break;
+      }
+    }
 
     const sumName=wb.SheetNames.find(n=>n.toLowerCase().includes("summary")&&n.toLowerCase().includes("tb"));summaryTB=sumName?wbSheets[sumName]:[];
     const detName=wb.SheetNames.find(n=>n.toLowerCase().includes("detail")&&n.toLowerCase().includes("tb"));detailTB=detName?wbSheets[detName]:[];
