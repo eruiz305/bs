@@ -97,7 +97,14 @@ function load(){try{const s=localStorage.getItem(STORAGE);if(s){const o=JSON.par
 
 function renderProfile(){const name=profile.first&&profile.last?`${profile.first} ${profile.last}`:"Not set";setText("user-line",`${name} · ${profile.email||""}`);setText("user-badge",name?`${name}`:"Not signed in");el("login").style.display=(profile.email? "none":"flex")}
 function openProfile(){el("u-first").value=profile.first||"";el("u-last").value=profile.last||"";el("u-email").value=profile.email||"";el("login").style.display="flex"}
-function applyProfile(){profile.first=el("u-first").value.trim();profile.last=el("u-last").value.trim();profile.email=el("u-email").value.trim();save();renderProfile()}
+function applyProfile(){
+  profile.first = el("u-first").value.trim();
+  profile.last = el("u-last").value.trim();
+  profile.email = el("u-email").value.trim();
+  save();
+  renderProfile();
+  setMode("home");
+}
 
 function setMode(m){
   mode = m;
@@ -111,6 +118,9 @@ function setMode(m){
     el("app-bar").style.display = "none";
     el("home-btn").style.display = "none";
     el("login-card").style.display = "none";
+    ["amort", "activity", "settings", "recon"].forEach(t => {
+      el(`tab-${t}`).classList.remove("active");
+    });
     return;
   }
 
