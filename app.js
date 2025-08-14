@@ -21,7 +21,7 @@ let actionsByKey={},items=[],reclassItems=[];
 let periodEnd="",fiscalYY="",actualMM="",seqStart="01",journalTitle="Standard Amortization Entry";
 
   let defaults={fyy:"",amm:"",amemo:"{{vendor}} {{invnum}} amortization ({{start}}–{{end}})",jnltitle:"Standard Amortization Entry"};
-  let mode="amort";
+  let mode="home";
   let activitySection="schedule";
 
 
@@ -101,10 +101,16 @@ function applyProfile(){profile.first=el("u-first").value.trim();profile.last=el
 
 function setMode(m){
   mode=m;
+  el("home-view").style.display=m==="home"?"block":"none";
+  el("app-bar").style.display=m==="home"?"none":"flex";
+  el("home-btn").style.display=m==="home"?"none":"inline-block";
+  el("login-card").style.display=m==="home"?"none":"block";
   el("amort-view").style.display=m==="amort"?"block":"none";
   el("activity-view").style.display=m==="activity"?"block":"none";
   el("settings-view").style.display=m==="settings"?"block":"none";
   el("recon-view").style.display=m==="recon"?"block":"none";
+  el("intangible-view").style.display=m==="intangible"?"block":"none";
+  el("accrual-view").style.display=m==="accrual"?"block":"none";
   el("tab-amort").classList.toggle("active",m==="amort");
   el("tab-activity").classList.toggle("active",m==="activity");
   el("tab-settings").classList.toggle("active",m==="settings");
@@ -426,6 +432,11 @@ el("tab-amort").onclick=()=>setMode("amort");
 el("tab-activity").onclick=()=>{setMode("activity");buildActivityDefaults()};
 el("tab-settings").onclick=()=>{setMode("settings");renderSettings()};
 
+el("btn-prepaid").onclick=()=>setMode("amort");
+el("btn-intangible").onclick=()=>setMode("intangible");
+el("btn-accruals").onclick=()=>setMode("accrual");
+el("home-btn").onclick=()=>setMode("home");
+
   el("act-refresh").onclick=renderActivity;
   el("act-select").addEventListener("change",()=>{el("act-search").value=el("act-select").value;renderActivity()});
   el("act-search").addEventListener("input",renderActivity);
@@ -501,7 +512,7 @@ el("grp-add").onclick=()=>{defaults.groups.push({group:"",seg2:"",seg3:"",seg4:"
 
 el("edit-user").onclick=openProfile;el("force-login").onclick=openProfile;el("u-save").onclick=()=>{applyProfile();el("login").style.display="none"};
 
-load();renderProfile();setMode("amort");
+load();renderProfile();setMode("home");
 loadMasterFile();
 if(defaults.fyy&&!fiscalYY)fiscalYY=defaults.fyy;
 if(defaults.amm&&!actualMM)actualMM=defaults.amm;
