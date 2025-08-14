@@ -335,36 +335,49 @@ function buildActivitySelect(){
   });
 }
 
+
 function renderActivity(){
   const ref=el("act-period").value||toISO(new Date());
-  const sel=el("act-select");
-  let combos=parseCombos(el("act-search").value);
-  if(!combos.length) combos=Array.from(sel.selectedOptions).map(o=>o.value);
-  combos=[...new Set(combos)];
-  Array.from(sel.options).forEach(o=>o.selected=combos.includes(o.value));
-  el("act-search").value=combos.join(", ");
-  const sum=el("act-summary"),host=el("act-table");sum.innerHTML="";host.innerHTML="";
-  if(!combos.length){sum.innerHTML='<span class="small">Enter or select an account combo.</span>';return}
-  const months=actMonths(ref);
-  const calcMap=Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}]));
-  const tbMap=detailTB.length?Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}])):null;
-  combos.forEach(c=>{
-    const calc=actCalcForCombo(c,ref);months.forEach(m=>{const k=monthKey(m);calcMap[k].dr+=calc.map[k].dr;calcMap[k].cr+=calc.map[k].cr});
-    if(tbMap){const tb=actTBForCombo(c,ref);if(tb)months.forEach(m=>{const k=monthKey(m);tbMap[k].dr+=tb.map[k].dr;tbMap[k].cr+=tb.map[k].cr})}
-  });
+  const combo=(el("act-search").value||el("act-select").value||"").trim();
+  const sum=el("act-summary");const host=el("act-table");sum.innerHTML="";host.innerHTML="";
+  if(!combo){sum.innerHTML='<span class="small">Enter or select an account combo.</span>';return}
+  const calc=actCalcForCombo(combo,ref);const tb=actTBForCombo(combo,ref);const months=calc.months;
   const hdr=`<tr><th>Row</th>${months.map(m=>`<th class="num">${m.toLocaleString(undefined,{month:"short"})} Dr</th><th class="num">${m.toLocaleString(undefined,{month:"short"})} Cr</th>`).join("")}<th class="num">Total Dr</th><th class="num">Total Cr</th></tr>`;
-  const rowFrom=(label,mp)=>`<tr><td>${label}</td>${months.map(m=>{const k=monthKey(m);const v=mp[k]||{dr:0,cr:0};return `<td class="num">${fmtUSD.format(v.dr)}</td><td class="num">${fmtUSD.format(v.cr)}</td>`}).join("")}<td class="num">${fmtUSD.format(months.reduce((a,m)=>a+(mp[monthKey(m)]?.dr||0),0))}</td><td class="num">${fmtUSD.format(months.reduce((a,m)=>a+(mp[monthKey(m)]?.cr||0),0))}</td></tr>`;
-  const t=document.createElement("table");t.innerHTML=`<thead>${hdr}</thead><tbody>${rowFrom("Calculated",calcMap)}${tbMap?rowFrom("TB",tbMap):""}</tbody>`;host.appendChild(t);
-  sum.innerHTML=combos.map(c=>{const desc=acctLookup(...c.split("-"));return `<div class=\"row\"><span class=\"pill\">${c}</span><span class=\"small\">${desc||""}</span></div>`}).join("");
+  const rowFrom=(label,mp)=>{
+    const tr=document.createElement("tr");
+    const tdLabel=document.createElement("td");tdLabel.textContent=label;tr.appendChild(tdLabel);
+    months.forEach(m=>{
+      const k=monthKey(m);const v=mp[k]||{dr:0,cr:0};
+      const tdDr=document.createElement("td");tdDr.className="num";const spDr=document.createElement("span");spDr.className="am-row";spDr.textContent=fmtUSD.format(v.dr);spDr.addEventListener("click",()=>openAmortDetail(m,combo));tdDr.appendChild(spDr);tr.appendChild(tdDr);
+      const tdCr=document.createElement("td");tdCr.className="num";const spCr=document.createElement("span");spCr.className="am-row";spCr.textContent=fmtUSD.format(v.cr);spCr.addEventListener("click",()=>openAmortDetail(m,combo));tdCr.appendChild(spCr);tr.appendChild(tdCr);
+    });
+    const totDr=months.reduce((a,m)=>a+(mp[monthKey(m)]?.dr||0),0);
+    const totCr=months.reduce((a,m)=>a+(mp[monthKey(m)]?.cr||0),0);
+    const tdTotDr=document.createElement("td");tdTotDr.className="num";tdTotDr.textContent=fmtUSD.format(totDr);tr.appendChild(tdTotDr);
+    const tdTotCr=document.createElement("td");tdTotCr.className="num";tdTotCr.textContent=fmtUSD.format(totCr);tr.appendChild(tdTotCr);
+    return tr;
+  };
+  const t=document.createElement("table");t.innerHTML=`<thead>${hdr}</thead>`;const tbdy=document.createElement("tbody");tbdy.appendChild(rowFrom("Calculated",calc.map));if(tb)tbdy.appendChild(rowFrom("TB",tb.map));t.appendChild(tbdy);host.appendChild(t);
+  const desc=acctLookup(...combo.split("-"));sum.innerHTML=`<div class="row"><span class="pill">${combo}</span><span class="small">${desc||""}</span></div>`;
 }
-
 function actMonths(ref){const arr=[];const base=ref?new Date(ref):new Date();for(let i=0;i<12;i++){const d=new Date(base.getFullYear(),base.getMonth()-11+i,1);arr.push(new Date(d.getFullYear(),d.getMonth(),1))}return arr}
 function monthKey(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")}
-function actCalcForCombo(combo,refDate){const combos=Array.isArray(combo)?combo:[combo];const set=new Set(combos);const months=actMonths(refDate);const map=Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}]));items.forEach(it=>{(it.schedule||[]).forEach(r=>{const d=new Date(r.date);const k=monthKey(new Date(d.getFullYear(),d.getMonth(),1));if(!map[k])return;if(set.has(r.debitCombo)) map[k].dr+=Number(r.amount)||0;if(set.has(r.creditCombo)) map[k].cr+=Number(r.amount)||0})});reclassItems.forEach(j=>{const k=monthKey(new Date(refDate||new Date()));if(set.has(j.toSeg2+"-"+j.toSeg3+"-"+j.toSeg4)) map[k].dr+=Number(j.amount)||0;if(set.has(j.fromSeg2+"-"+j.fromSeg3+"-"+j.fromSeg4)) map[k].cr+=Number(j.amount)||0});return {months,map}}
-function actTBForCombo(combo,refDate){if(!detailTB.length)return null;const seg2k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg2")||k.toLowerCase().includes("segnumtwo"));const seg3k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg3")||k.toLowerCase().includes("segnumthr"));const seg4k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg4")||k.toLowerCase().includes("segnumfou"));const datek=Object.keys(detailTB[0]).find(k=>/date|trndat|trandat|posting/i.test(k));const debitk=Object.keys(detailTB[0]).find(k=>/debit|debitamt|debamt/i.test(k));const creditk=Object.keys(detailTB[0]).find(k=>/credit|crdamt|cramt/i.test(k));if(!seg2k||!seg3k||!seg4k||!datek||!(debitk||creditk))return null;const combos=Array.isArray(combo)?combo:[combo];const set=new Set(combos);const months=actMonths(refDate);const map=Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}]));detailTB.forEach(r=>{const k=[r[seg2k],r[seg3k],r[seg4k]].map(x=>String(x||"")).join("-");if(!set.has(k))return;const d=parseDate(r[datek]);if(!d)return;const mk=monthKey(new Date(d.getFullYear(),d.getMonth(),1));if(!map[mk])return;const dr=Number((debitk&&r[debitk])||0)||0;const cr=Number((creditk&&r[creditk])||0)||0;map[mk].dr+=dr;map[mk].cr+=cr});return {months,map}}
+function actCalcForCombo(combo,refDate){const months=actMonths(refDate);const map=Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}]));items.forEach(it=>{(it.schedule||[]).forEach(r=>{const d=new Date(r.date);const k=monthKey(new Date(d.getFullYear(),d.getMonth(),1));if(!map[k])return;if(r.debitCombo===combo) map[k].dr+=Number(r.amount)||0;if(r.creditCombo===combo) map[k].cr+=Number(r.amount)||0})});reclassItems.forEach(j=>{const k=monthKey(new Date(refDate||new Date()));if(j.toSeg2+"-"+j.toSeg3+"-"+j.toSeg4===combo) map[k].dr+=Number(j.amount)||0;if(j.fromSeg2+"-"+j.fromSeg3+"-"+j.fromSeg4===combo) map[k].cr+=Number(j.amount)||0});return {months,map}}
+function actTBForCombo(combo,refDate){if(!detailTB.length)return null;const seg2k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg2")||k.toLowerCase().includes("segnumtwo"));const seg3k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg3")||k.toLowerCase().includes("segnumthr"));const seg4k=Object.keys(detailTB[0]).find(k=>k.toLowerCase().includes("seg4")||k.toLowerCase().includes("segnumfou"));const datek=Object.keys(detailTB[0]).find(k=>/date|trndat|trandat|posting/i.test(k));const debitk=Object.keys(detailTB[0]).find(k=>/debit|debitamt|debamt/i.test(k));const creditk=Object.keys(detailTB[0]).find(k=>/credit|crdamt|cramt/i.test(k));if(!seg2k||!seg3k||!seg4k||!datek||!(debitk||creditk))return null;const months=actMonths(refDate);const map=Object.fromEntries(months.map(m=>[monthKey(m),{dr:0,cr:0}]));detailTB.forEach(r=>{const k=[r[seg2k],r[seg3k],r[seg4k]].map(x=>String(x||"")).join("-");if(k!==combo)return;const d=parseDate(r[datek]);if(!d)return;const mk=monthKey(new Date(d.getFullYear(),d.getMonth(),1));if(!map[mk])return;const dr=Number((debitk&&r[debitk])||0)||0;const cr=Number((creditk&&r[creditk])||0)||0;map[mk].dr+=dr;map[mk].cr+=cr});return {months,map}}
 
+function openAmortDetail(month,combo){
+  el("dlg-title").textContent=`${combo} — ${month.toLocaleString(undefined,{month:"long",year:"numeric"})}`;
+  const body=el("dlg-body");body.innerHTML="";
+  const table=document.createElement("table");table.innerHTML='<thead><tr><th>Date</th><th class="num">Amount</th><th>Dr</th><th>Cr</th><th>Memo</th></tr></thead>';
+  const tb=document.createElement("tbody");
+  const mk=monthKey(new Date(month.getFullYear(),month.getMonth(),1));
+  items.forEach(it=>{(it.schedule||[]).forEach(r=>{const d=new Date(r.date);if(monthKey(new Date(d.getFullYear(),d.getMonth(),1))!==mk)return;if(r.debitCombo!==combo&&r.creditCombo!==combo)return;const tr=document.createElement("tr");tr.innerHTML=`<td>${toISO(d)}</td><td class="num">${fmtUSD.format(r.amount)}</td><td>${r.debitCombo}</td><td>${r.creditCombo}</td><td title="${r.memo}">${r.memo}</td>`;tb.appendChild(tr)})});
+  const ref=el("act-period").value||toISO(new Date());
+  if(mk===monthKey(new Date(ref))){reclassItems.forEach(j=>{const dr=`${j.toSeg2}-${j.toSeg3}-${j.toSeg4}`;const cr=`${j.fromSeg2}-${j.fromSeg3}-${j.fromSeg4}`;if(dr!==combo&&cr!==combo)return;const tr=document.createElement("tr");tr.innerHTML=`<td>${ref}</td><td class="num">${fmtUSD.format(j.amount)}</td><td>${dr}</td><td>${cr}</td><td title="${j.memo}">${j.memo}</td>`;tb.appendChild(tr)})}
+  if(tb.children.length){table.appendChild(tb);body.appendChild(table)}else body.textContent="No detail lines found.";
+  el("dlg").style.display="flex";
+}
 
-function buildActivityDefaults(){el("act-period").value=periodEnd||toISO(new Date());buildGroupFilter();buildActivitySelect();renderActivity()}
 
 
 function handleImportSchedule(f){const r=new FileReader();r.onload=e=>{const rows=String(e.target.result).split(/\r?\n/).map(l=>l.split(/,|\t/));const hdr=rows.shift().map(x=>x.trim().toLowerCase());rows.forEach(c=>{if(!c.length)return;const val=n=>{const i=hdr.indexOf(n);return i>=0?c[i]:""};const o={date:val("date"),amount:Number(val("amount")||0),debitCombo:`${val("debitseg2")||""}-${val("debitseg3")||""}-${val("debitseg4")||""}`,creditCombo:`${val("creditseg2")||""}-${val("creditseg3")||""}-${val("creditseg4")||""}`,memo:val("memo"),comment:val("comment"),createdBy:val("createdby"),createdAt:val("createdat")};const createdAt=parseDate(o.createdAt)||new Date();items.push({id:uid(),comment:o.comment||"",createdBy:o.createdBy||"",createdAt,source:{type:"Import",vendor:"Imported",invoiceNumber:"",amount:o.amount,invoiceDate:parseDate(o.date)||new Date(),description:o.memo,seg2:o.creditCombo.split("-")[0],seg3:o.creditCombo.split("-")[1],seg4:o.creditCombo.split("-")[2],lines:[]},amort:{enabled:false,method:"straight",months:1,startDate:parseDate(o.date)||new Date(),postOn:"EOM",expSeg2:o.debitCombo.split("-")[0],expSeg3:o.debitCombo.split("-")[1],expSeg4:o.debitCombo.split("-")[2],memoTemplate:o.memo},asset:{seg2:o.creditCombo.split("-")[0],seg3:o.creditCombo.split("-")[1],seg4:o.creditCombo.split("-")[2]},schedule:[{date:parseDate(o.date)||new Date(),amount:o.amount,debitCombo:o.debitCombo,creditCombo:o.creditCombo,memo:o.memo,comment:o.comment||"",createdBy:o.createdBy||"",createdAt}]})});save();renderItems();renderActivity()};r.readAsText(f)}
