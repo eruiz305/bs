@@ -205,15 +205,19 @@ function buildAcctIndex(){
   acctMap=new Map();acctList=[];
   if(!acctSheet||!wbSheets[acctSheet]?.length){setText("acct-stats","0 accounts loaded");return}
   const rows=wbSheets[acctSheet];
+  const activeCol=acctCols.active||"";
+  let total=0,activeCount=0;
   rows.forEach(r=>{
     const a=String(r[acctCols.seg2]??"").trim(),b=String(r[acctCols.seg3]??"").trim(),c=String(r[acctCols.seg4]??"").trim();
     const desc=String(r[acctCols.desc]??"").trim();
-    const activeCol=acctCols.active||"";
-    const active=activeCol? String(r[activeCol]??"").toUpperCase()!=="N":true;
-    if(a||b||c){acctMap.set(`${a}-${b}-${c}`,desc+(active?"":" (inactive)"));acctList.push({key:`${a}-${b}-${c}`,desc})}
+    const isActive=activeCol? String(r[activeCol]??"").toUpperCase()!=="N":true;
+    if(a||b||c){
+      total++;
+      if(isActive){acctMap.set(`${a}-${b}-${c}`,desc);acctList.push({key:`${a}-${b}-${c}`,desc});activeCount++}
+    }
   });
   acctList=sortAcctKeysNumerically(acctList);
-  setText("acct-stats",`${acctMap.size} accounts loaded`);
+  setText("acct-stats",activeCol?`${activeCount} active of ${total} accounts loaded`:`${acctMap.size} accounts loaded`);
   buildActivitySelect();
 }
 
@@ -309,8 +313,8 @@ el("clear-items").addEventListener("click",()=>{items=[];save();renderItems()});
 el("export").addEventListener("click",exportTXT);
 ["periodEnd","fiscalYY","actualMM","seqStart","jnlTitle"].forEach(id=>el(id).addEventListener("input",e=>{if(id==="periodEnd")periodEnd=e.target.value;if(id==="fiscalYY")fiscalYY=e.target.value.replace(/[^0-9]/g,"").slice(-2);if(id==="actualMM")actualMM=e.target.value.replace(/[^0-9]/g,"").slice(-2);if(id==="seqStart")seqStart=(e.target.value.replace(/[^0-9]/g,"").slice(-2)||"01");if(id==="jnlTitle")journalTitle=e.target.value;el(id).value=(id==="seqStart"?seqStart:(id==="fiscalYY"?fiscalYY:(id==="actualMM"?actualMM:e.target.value)));save()}));
 
-el("acct-sheet").addEventListener("change",e=>{acctSheet=e.target.value;const cols=filterUsableCols(Object.keys((wbSheets[acctSheet]||[{}])[0]||{}));["acct-seg2","acct-seg3","acct-seg4","acct-desc","acct-active"].forEach((id,i)=>fillSelectOptions(el(id),cols,acctCols[["seg2","seg3","seg4","desc","active"][i]]||""))});
-["acct-seg2","acct-seg3","acct-seg4","acct-desc","acct-active"].forEach((id,i)=>el(id).addEventListener("change",e=>{acctCols[["seg2","seg3","seg4","desc","active"][i]]=e.target.value;save()}));
+el("acct-sheet").addEventListener("change",e=>{acctSheet=e.target.value;const cols=filterUsableCols(Object.keys((wbSheets[acctSheet]||[{}])[0]||{}));["acct-seg2","acct-seg3","acct-seg4","acct-desc","acct-active"].forEach((id,i)=>fillSelectOptions(el(id),cols,acctCols[["seg2","seg3","seg4","desc","active"][i]]||""));buildAcctIndex();save()});
+["acct-seg2","acct-seg3","acct-seg4","acct-desc","acct-active"].forEach((id,i)=>el(id).addEventListener("change",e=>{acctCols[["seg2","seg3","seg4","desc","active"][i]]=e.target.value;buildAcctIndex();save()}));
 el("acct-build").addEventListener("click",()=>{buildAcctIndex();save()});
 
 
